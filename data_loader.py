@@ -24,6 +24,19 @@ class DataLoader:
         self.ldap_data = None
         self.psychometric_data = None
         self.features = None
+        self.insiders_data = None
+        
+    def load_insiders_info(self):
+        """Загрузка информации об инсайдерах"""
+        insiders_data = pd.DataFrame({
+            'dataset': ['r2', 'r3.1', 'r2'],
+            'scenario': [1, 1, 2],
+            'user': ['ONS0995', 'CSF0929', 'CCH0959'],
+            'start': pd.to_datetime(['3/6/2010 1:41:56', '07/01/2010 01:24:58', '08/02/2010 10:34:31']),
+            'end': pd.to_datetime(['3/20/2010 8:10:12', '07/16/2010 06:52:00', '09/30/2010 15:04:03']),
+        })
+        self.insiders_data = insiders_data
+        return insiders_data
         
     def load_data(self, dataset='r3.1'):
         """Загрузка данных из указанного набора"""
@@ -32,6 +45,9 @@ class DataLoader:
             
         self.current_dataset = dataset
         dataset_path = os.path.join(self.base_path, dataset)
+        
+        # Загрузка информации об инсайдерах
+        self.load_insiders_info()
         
         # Загрузка основных данных
         print(f"Loading data from {dataset}...")
