@@ -2,6 +2,7 @@ from models.time_activity_detector import TimeActivityDetector
 from models.data_frequency_detector import DataFrequencyDetector
 from models.data_volume_detector import DataVolumeDetector
 from models.resource_access_detector import ResourceAccessDetector
+from models.file_activity_detector import FileActivityDetector
 from models.ensemble_detector import EnsembleDetector
 from data_loader import DataLoader
 import pandas as pd
@@ -25,7 +26,8 @@ def create_anomaly_detection_system():
         'time_activity': TimeActivityDetector(contamination=0.1),
         'data_frequency': DataFrequencyDetector(window_size=3600, contamination=0.1),
         'data_volume': DataVolumeDetector(window_size=3600, contamination=0.1),
-        'resource_access': ResourceAccessDetector(contamination=0.1)
+        'resource_access': ResourceAccessDetector(contamination=0.1),
+        'file_activity': FileActivityDetector(contamination=0.1)
     }
     
     # Создаем веса для каждого детектора
@@ -33,7 +35,8 @@ def create_anomaly_detection_system():
         'time_activity': 1.0,
         'data_frequency': 1.0,
         'data_volume': 1.0,
-        'resource_access': 1.5  # Повышенный вес для детектора доступа к ресурсам
+        'resource_access': 1.5,  # Повышенный вес для детектора доступа к ресурсам
+        'file_activity': 1.5     # Повышенный вес для детектора файловой активности
     }
     
     # Создаем ансамбль
