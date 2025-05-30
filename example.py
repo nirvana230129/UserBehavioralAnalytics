@@ -69,11 +69,13 @@ def main():
         print(timeline['type'].value_counts())
         
         # Если пользователь действительно инсайдер
-        if any(loader.insiders_data['username'] == user):
-            insider_info = loader.insiders_data[loader.insiders_data['username'] == user].iloc[0]
+        insider_info = loader.insiders_data[loader.insiders_data['user'] == user]
+        if not insider_info.empty:
             print("\nПодтвержденный инсайдер!")
-            print(f"Сценарий: {insider_info['scenario']}")
-            print(f"Период активности: {insider_info['start']} - {insider_info['end']}")
+            for _, info in insider_info.iterrows():
+                print(f"Сценарий: {info['scenario']}")
+                print(f"Детали: {info['details']}")
+                print(f"Период активности: {info['start']} - {info['end']}")
 
 if __name__ == '__main__':
     main() 

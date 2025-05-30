@@ -22,8 +22,14 @@ class DataLoader:
         self.device_data = pd.read_csv(os.path.join(self.dataset_path, 'r1/device.csv'))
         self.device_data['date'] = pd.to_datetime(self.device_data['date'])
         
-        # Загрузка HTTP данных
-        self.http_data = pd.read_csv(os.path.join(self.dataset_path, 'r1/http.csv'))
+        # Загрузка HTTP данных (у этого файла другая структура)
+        self.http_data = pd.read_csv(
+            os.path.join(self.dataset_path, 'r1/http.csv'),
+            names=['id', 'date', 'user', 'pc', 'url'],
+            header=None
+        )
+        # Очищаем id от фигурных скобок
+        self.http_data['id'] = self.http_data['id'].str.strip('{}')
         self.http_data['date'] = pd.to_datetime(self.http_data['date'])
         
         # Загрузка LDAP данных
@@ -31,13 +37,18 @@ class DataLoader:
         ldap_dfs = []
         for file in ldap_files:
             df = pd.read_csv(file)
-            month = os.path.basename(file).split('_')[1].split('.')[0]
+            # Извлекаем дату из имени файла (формат: YYYY-MM.csv)
+            month = os.path.basename(file).split('.')[0]  # Получаем YYYY-MM
             df['month'] = month
             ldap_dfs.append(df)
         self.ldap_data = pd.concat(ldap_dfs, ignore_index=True)
         
         # Загрузка данных об инсайдерах (истинные метки)
-        self.insiders_data = pd.read_csv(os.path.join(self.dataset_path, 'answers/insiders.csv'))
+        try:
+            self.insiders_data = pd.read_csv(os.path.join(self.dataset_path, 'answers/insiders.csv'))
+        except FileNotFoundError:
+            print("Внимание: файл с данными об инсайдерах не найден. Метки аномалий будут установлены в 0.")
+            self.insiders_data = pd.DataFrame(columns=['user', 'scenario', 'start', 'end'])
         
     def prepare_features(self, start_date=None, end_date=None):
         """Подготовка признаков для обучения моделей"""
@@ -76,22 +87,25 @@ class DataLoader:
             after_hours_logons = sum((logon_hours < 8) | (logon_hours > 18))
             
             # Признаки устройств
-            device_connects = len(user_devices[user_devices['activity'] == 'connect'])
+            device_connects = len(user_devices[user_devices['activity'] == 'Connect'])
             after_hours_devices = len(user_devices[
-                (user_devices['activity'] == 'connect') &
+                (user_devices['activity'] == 'Connect') &
                 ((user_devices['date'].dt.hour < 8) | (user_devices['date'].dt.hour > 18))
             ])
             
             # HTTP признаки
-            unique_domains = len(user_http['url'].apply(lambda x: x.split('/')[0]).unique())
+            unique_domains = len(user_http['url'].apply(lambda x: x.split('/')[2] if len(x.split('/')) > 2 else x).unique())
             http_requests = len(user_http)
             
             # Признаки доступа
             unique_pcs = len(user_logons['pc'].unique())
-            is_admin = any(self.ldap_data[
-                (self.ldap_data['user_id'] == user) &
-                (self.ldap_data['role'] == 'IT Admin')
-            ])
+            try:
+                is_admin = any(self.ldap_data[
+                    (self.ldap_data['user_id'] == user) &
+                    (self.ldap_data['role'] == 'IT Admin')
+                ])
+            except:
+                is_admin = False
             
             # Собираем все признаки
             user_features = {
@@ -108,7 +122,7 @@ class DataLoader:
             }
             
             # Добавляем метку аномальности (если пользователь есть в insiders_data)
-            is_insider = any(self.insiders_data['username'] == user)
+            is_insider = any(self.insiders_data['user'] == user)
             user_features['is_anomaly'] = int(is_insider)
             
             features.append(user_features)
@@ -148,11 +162,12 @@ class DataLoader:
             
         # Сортируем события по времени
         events = pd.DataFrame(events)
-        events = events.sort_values('date')
+        if not events.empty:
+            events = events.sort_values('date')
         
-        if start_date:
+        if start_date and not events.empty:
             events = events[events['date'] >= pd.to_datetime(start_date)]
-        if end_date:
+        if end_date and not events.empty:
             events = events[events['date'] <= pd.to_datetime(end_date)]
             
         return events 
