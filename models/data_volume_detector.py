@@ -11,10 +11,12 @@ class DataVolumeDetector(AnomalyDetector):
         self.is_fitted = False
         
     def _prepare_features(self, X):
-        """Подготовка признаков объемов данных"""
+        """Подготовка признаков для анализа объема данных"""
         features = np.column_stack([
-            X['http_requests'],
-            X['unique_domains']
+            X['unique_domains'],
+            X['unique_email_contacts'],
+            X['unique_file_types'],
+            X['unique_pcs']
         ])
         if not self.is_fitted:
             self.is_fitted = True

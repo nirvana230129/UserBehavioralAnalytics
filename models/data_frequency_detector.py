@@ -11,11 +11,12 @@ class DataFrequencyDetector(AnomalyDetector):
         self.is_fitted = False
         
     def _prepare_features(self, X):
-        """Подготовка признаков частоты обращений"""
+        """Подготовка признаков для анализа частоты обращений к данным"""
         features = np.column_stack([
-            X['http_requests'],
-            X['device_connects'],
-            X['total_logons']
+            X['avg_http_requests_per_day'],
+            X['avg_emails_sent_per_day'],
+            X['avg_emails_received_per_day'],
+            X['avg_file_copies_per_day']
         ])
         if not self.is_fitted:
             self.is_fitted = True

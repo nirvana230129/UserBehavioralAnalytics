@@ -9,12 +9,13 @@ class TimeActivityDetector(AnomalyDetector):
         self.model = IsolationForest(contamination=contamination, random_state=42)
         
     def _prepare_features(self, X):
-        """Подготовка признаков времени"""
-        # Используем уже подготовленные признаки времени
+        """Подготовка признаков для анализа временных паттернов"""
         features = np.column_stack([
-            X['total_logons'],
-            X['after_hours_logons'],
-            X['logon_hour_std']
+            X['avg_logons_per_day'],
+            X['weekend_logon_ratio'],
+            X['after_hours_logon_ratio'],
+            X['avg_device_usage_per_day'],
+            X['device_usage_ratio']
         ])
         return features
         

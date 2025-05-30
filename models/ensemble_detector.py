@@ -3,85 +3,68 @@ from sklearn.ensemble import RandomForestClassifier
 from .base_model import AnomalyDetector
 
 class EnsembleDetector(AnomalyDetector):
-    def __init__(self, base_detectors, weights=None):
+    def __init__(self, detectors, weights=None):
         """
         Parameters:
         -----------
-        base_detectors : dict
-            Словарь с базовыми детекторами {name: detector}
+        detectors : dict
+            Словарь детекторов {name: detector}
         weights : dict, optional
             Веса для каждого детектора {name: weight}
         """
         super().__init__()
-        self.base_detectors = base_detectors
-        self.weights = weights or {name: 1.0 for name in base_detectors.keys()}
-        # Используем параметр class_weight='balanced' для лучшей работы с несбалансированными данными
-        self.model = RandomForestClassifier(
-            n_estimators=100,
-            random_state=42,
-            class_weight='balanced'
-        )
+        self.detectors = detectors
+        self.weights = weights or {name: 1.0 for name in detectors.keys()}
         
     def fit(self, X, y=None):
-        """
-        Обучение ансамбля на основе предсказаний базовых детекторов
-        """
-        # Сначала обучаем каждый базовый детектор
-        for detector in self.base_detectors.values():
+        """Обучение всех базовых детекторов"""
+        print("\nОбучение базовых детекторов...")
+        for name, detector in self.detectors.items():
+            print(f"Обучение {name}...")
             detector.fit(X)
-            
-        # Получаем предсказания от всех базовых детекторов
-        predictions = self._get_base_predictions(X)
-        
-        if y is None:
-            # Если метки не предоставлены, используем консенсус базовых детекторов
-            y = np.mean(predictions, axis=1) > 0.5
-        
-        # Преобразуем y в целочисленный тип для классификации
-        y = y.astype(int)
-        
-        # Убеждаемся, что у нас есть оба класса для обучения
-        if len(np.unique(y)) == 1:
-            # Если все примеры одного класса, добавляем искусственный пример другого класса
-            additional_X = predictions[0:1]  # Берем первый пример
-            additional_y = 1 - y[0:1]  # Противоположный класс
-            predictions = np.vstack([predictions, additional_X])
-            y = np.hstack([y, additional_y])
-            
-        self.model.fit(predictions, y)
         return self
         
     def _get_base_predictions(self, X):
         """Получение предсказаний от всех базовых детекторов"""
-        predictions = []
-        for name, detector in self.base_detectors.items():
+        predictions = {}
+        for name, detector in self.detectors.items():
             pred = detector.predict_proba(X)
-            if isinstance(pred, np.ndarray):
-                predictions.append(pred * self.weights[name])
-        return np.column_stack(predictions) if predictions else np.array([])
-        
-    def predict(self, X):
-        """Предсказание аномальности"""
-        predictions = self._get_base_predictions(X)
-        if len(predictions) == 0:
-            return np.zeros(len(X))
-        return self.model.predict(predictions)
+            predictions[name] = pred * self.weights[name]
+        return predictions
         
     def predict_proba(self, X):
-        """Вероятность аномальности"""
-        predictions = self._get_base_predictions(X)
-        if len(predictions) == 0:
-            return np.zeros(len(X))
+        """Вероятностные оценки аномальности"""
+        base_predictions = self._get_base_predictions(X)
+        
+        # Взвешенное среднее всех предсказаний
+        weighted_sum = np.zeros(len(X))
+        total_weight = 0
+        
+        for name, pred in base_predictions.items():
+            weight = self.weights[name]
+            weighted_sum += pred * weight
+            total_weight += weight
             
-        # Получаем вероятности классов
-        proba = self.model.predict_proba(predictions)
+        return weighted_sum / total_weight if total_weight > 0 else weighted_sum
         
-        # Если есть только один класс, возвращаем соответствующие вероятности
-        if proba.shape[1] == 1:
-            return proba.ravel()
+    def predict(self, X, threshold=0.8):
+        """
+        Предсказание аномальности
         
-        # Иначе возвращаем вероятность аномального класса (класс 1)
-        return proba[:, 1]
+        Parameters:
+        -----------
+        X : pandas.DataFrame
+            Входные данные
+        threshold : float, default=0.8
+            Порог для определения аномалии
+            
+        Returns:
+        --------
+        numpy.ndarray
+            Массив меток: -1 - аномалия, 1 - норма
+        """
+        probas = self.predict_proba(X)
+        return np.where(probas > threshold, -1, 1)
         
     def update_weights(self, new_weights):
         """Обновление весов базовых детекторов"""

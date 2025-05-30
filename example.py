@@ -8,8 +8,13 @@ from data_loader import DataLoader
 import pandas as pd
 import numpy as np
 from sklearn.metrics import precision_score, recall_score, f1_score
+from tqdm import tqdm
+import time
 
 def create_anomaly_detection_system():
+    """Создание системы детектирования аномалий"""
+    print("\n[1/4] Инициализация детекторов...")
+    
     # Создаем базовые детекторы с повышенной чувствительностью
     detectors = {
         'time_activity': TimeActivityDetector(contamination=0.05),
@@ -18,7 +23,8 @@ def create_anomaly_detection_system():
         'resource_access': ResourceAccessDetector(contamination=0.05),
         'file_activity': FileActivityDetector(contamination=0.05)
     }
-    
+        
+    print("Настройка весов детекторов...")
     # Создаем веса для каждого детектора
     weights = {
         'time_activity': 1.5,    # Повышенный вес для временных паттернов
@@ -29,20 +35,28 @@ def create_anomaly_detection_system():
     }
     
     # Создаем ансамбль
+    print("Создание ансамбля детекторов...")
     ensemble = EnsembleDetector(detectors, weights)
     return ensemble
 
 def evaluate_detection(features, predictions, probabilities, loader, dataset):
     """Оценка качества обнаружения инсайдеров"""
+    print("\n[3/4] Оценка результатов детектирования...")
+    
+    print("Получение списка реальных инсайдеров...")
     # Получаем список реальных инсайдеров для текущего датасета
     real_insiders = loader.insiders_data[loader.insiders_data['dataset'] == dataset]['user'].tolist()
     
+    print("Подготовка массива истинных меток...")
     # Создаем массив истинных меток
     y_true = np.zeros(len(features))
-    for idx, user in enumerate(features['user_id']):
+    for idx, user in tqdm(enumerate(features['user_id']), 
+                         desc="Разметка пользователей", 
+                         total=len(features)):
         if user in real_insiders:
             y_true[idx] = 1
             
+    print("Вычисление метрик качества...")
     # Преобразуем предсказания из [-1, 1] в [0, 1]
     y_pred = (predictions == -1).astype(int)
     
@@ -57,12 +71,14 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
     print(f"F1-score: {f1:.3f}")
     
     # Анализ результатов
-    print("\nАнализ обнаружения:")
+    print("\nАнализ результатов обнаружения...")
     detected_insiders = []
     missed_insiders = []
     false_positives = []
     
-    for idx, (user, prob) in enumerate(zip(features['user_id'], probabilities)):
+    for idx, (user, prob) in tqdm(enumerate(zip(features['user_id'], probabilities)), 
+                                 desc="Анализ предсказаний",
+                                 total=len(features)):
         if y_pred[idx] == 1:  # Если обнаружена аномалия
             if user in real_insiders:
                 detected_insiders.append((user, prob))
@@ -72,6 +88,13 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
             missed_insiders.append((user, prob))
     
     # Вывод результатов
+    print("\nРезультаты анализа:")
+    print(f"Всего пользователей проанализировано: {len(features)}")
+    print(f"Обнаружено потенциальных аномалий: {len(detected_insiders) + len(false_positives)}")
+    print(f"Правильно обнаружено инсайдеров: {len(detected_insiders)}")
+    print(f"Ложных срабатываний: {len(false_positives)}")
+    print(f"Пропущено инсайдеров: {len(missed_insiders)}")
+    
     print("\nОбнаруженные инсайдеры:")
     for user, prob in detected_insiders:
         insider_info = loader.insiders_data[
@@ -92,55 +115,80 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
         print(f"- {user} (вероятность: {prob:.3f})")
 
 def main():
-    # Загружаем данные
-    dataset = 'r3.1'  # Можно изменить на 'r2'
-    loader = DataLoader('dataset')
-    loader.load_data(dataset)
+    start_time = time.time()
+    print("\n=== Запуск системы обнаружения инсайдеров ===")
     
-    # Подготавливаем признаки
-    features = loader.prepare_features()
+    # Анализируем все доступные датасеты
+    datasets = ['r1', 'r2', 'r3.1']
     
-    # Используем только признаки без меток
-    X = features.drop(['user_id'], axis=1)
+    for dataset in datasets:
+        print(f"\n{'='*50}")
+        print(f"Анализ датасета {dataset}")
+        print(f"{'='*50}")
+        
+        # Загружаем данные
+        print(f"\n[1/5] Загрузка данных из датасета {dataset}...")
+        loader = DataLoader('dataset')
+        loader.load_data(dataset)
+        
+        # Подготавливаем признаки
+        print("\n[2/5] Подготовка признаков...")
+        features = loader.prepare_features()
+        print(f"Извлечено {features.shape[1]} признаков для {features.shape[0]} пользователей")
+        
+        # Используем только признаки без меток
+        X = features.drop(['user_id'], axis=1)
+        
+        # Создаем систему детектирования
+        print("\n[3/5] Создание системы детектирования...")
+        system = create_anomaly_detection_system()
+        
+        # Обучаем систему
+        print("\n[4/5] Обучение моделей...")
+        system.fit(X)
+        
+        # Получаем предсказания для всех пользователей
+        print("\n[5/5] Анализ поведения пользователей...")
+        predictions = system.predict(X)
+        probabilities = system.predict_proba(X)
+        
+        # Оцениваем качество обнаружения
+        evaluate_detection(features, predictions, probabilities, loader, dataset)
+        
+        # Анализируем пользователей с высоким риском
+        print("\nПодробный анализ пользователей высокого риска...")
+        high_risk_mask = probabilities > 0.8
+        high_risk_users = features.loc[high_risk_mask, 'user_id']
+        
+        print(f"\nНайдено {len(high_risk_users)} пользователей с высоким риском (p > 0.8)")
+        
+        for user in tqdm(high_risk_users, desc="Анализ пользователей высокого риска"):
+            print(f"\nАнализ пользователя {user}:")
+            # Получаем временную линию событий пользователя
+            timeline = loader.get_user_timeline(user)
+            print(f"Всего событий: {len(timeline)}")
+            if not timeline.empty:
+                print("Типы событий:")
+                print(timeline['type'].value_counts())
+                
+                # Показываем примеры подозрительных действий
+                print("\nПримеры последних действий:")
+                print(timeline.tail().to_string())
+                
+                # Если это реальный инсайдер, показываем дополнительную информацию
+                insider_info = loader.insiders_data[
+                    (loader.insiders_data['dataset'] == dataset) & 
+                    (loader.insiders_data['user'] == user)
+                ]
+                if not insider_info.empty:
+                    info = insider_info.iloc[0]
+                    print("\nПОДТВЕРЖДЕННЫЙ ИНСАЙДЕР!")
+                    print(f"Сценарий: {info['scenario']}")
+                    print(f"Период активности: {info['start']} - {info['end']}")
     
-    # Создаем систему детектирования
-    system = create_anomaly_detection_system()
-    
-    # Получаем предсказания для всех пользователей
-    predictions = system.predict(X)
-    probabilities = system.predict_proba(X)
-    
-    # Оцениваем качество обнаружения
-    evaluate_detection(features, predictions, probabilities, loader, dataset)
-    
-    # Анализируем пользователей с высоким риском
-    print("\nПодробный анализ пользователей с высоким риском аномального поведения (p > 0.8):")
-    high_risk_mask = probabilities > 0.8
-    high_risk_users = features.loc[high_risk_mask, 'user_id']
-    
-    for user in high_risk_users:
-        print(f"\nАнализ пользователя {user}:")
-        # Получаем временную линию событий пользователя
-        timeline = loader.get_user_timeline(user)
-        print(f"Всего событий: {len(timeline)}")
-        if not timeline.empty:
-            print("Типы событий:")
-            print(timeline['type'].value_counts())
-            
-            # Показываем примеры подозрительных действий
-            print("\nПримеры последних действий:")
-            print(timeline.tail().to_string())
-            
-            # Если это реальный инсайдер, показываем дополнительную информацию
-            insider_info = loader.insiders_data[
-                (loader.insiders_data['dataset'] == dataset) & 
-                (loader.insiders_data['user'] == user)
-            ]
-            if not insider_info.empty:
-                info = insider_info.iloc[0]
-                print("\nПОДТВЕРЖДЕННЫЙ ИНСАЙДЕР!")
-                print(f"Сценарий: {info['scenario']}")
-                print(f"Период активности: {info['start']} - {info['end']}")
+    end_time = time.time()
+    execution_time = end_time - start_time
+    print(f"\n=== Анализ всех датасетов завершен за {execution_time:.2f} секунд ===")
 
 if __name__ == '__main__':
     main() 

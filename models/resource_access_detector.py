@@ -11,11 +11,12 @@ class ResourceAccessDetector(AnomalyDetector):
         self.is_fitted = False
         
     def _prepare_features(self, X):
-        """Подготовка признаков доступа к ресурсам"""
+        """Подготовка признаков для анализа доступа к ресурсам"""
         features = np.column_stack([
-            X['unique_pcs'],
             X['is_admin'],
-            X['unique_domains']
+            X['unique_pcs'],
+            X['device_usage_ratio'],
+            X['O'], X['C'], X['E'], X['A'], X['N']  # Психометрические характеристики
         ])
         if not self.is_fitted:
             self.is_fitted = True

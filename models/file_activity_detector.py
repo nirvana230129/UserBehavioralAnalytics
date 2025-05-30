@@ -113,3 +113,13 @@ class FileActivityDetector(AnomalyDetector):
         # Нормализуем scores в диапазон [0, 1], где 1 - наиболее аномальное
         probs = 1 - (scores - scores.min()) / (scores.max() - scores.min())
         return probs 
+
+    def _prepare_features(self, X):
+        """Подготовка признаков для анализа файловых операций"""
+        features = np.column_stack([
+            X['avg_file_copies_per_day'],
+            X['unique_file_types'],
+            X['after_hours_logon_ratio'],
+            X['weekend_logon_ratio']
+        ])
+        return features 

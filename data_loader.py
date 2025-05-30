@@ -14,7 +14,7 @@ class DataLoader:
             Путь к директории с данными
         """
         self.base_path = base_path
-        self.datasets = ['r2', 'r3.1']  # Поддерживаемые наборы данных
+        self.datasets = ['r1', 'r2', 'r3.1']  # Добавляем r1 в список поддерживаемых датасетов
         self.current_dataset = None
         self.logon_data = None
         self.device_data = None
@@ -54,44 +54,115 @@ class DataLoader:
         
         # Логи входа
         print("Loading logon data...")
-        self.logon_data = pd.read_csv(os.path.join(dataset_path, 'logon.csv'))
-        self.logon_data['date'] = pd.to_datetime(self.logon_data['date'])
+        try:
+            self.logon_data = pd.read_csv(os.path.join(dataset_path, 'logon.csv'))
+            # Проверяем и преобразуем столбец с датой
+            date_column = next((col for col in ['date', 'timestamp'] if col in self.logon_data.columns), None)
+            if date_column:
+                self.logon_data[date_column] = pd.to_datetime(self.logon_data[date_column])
+                if date_column != 'date':
+                    self.logon_data = self.logon_data.rename(columns={date_column: 'date'})
+        except Exception as e:
+            print(f"Error loading logon data: {e}")
+            self.logon_data = pd.DataFrame(columns=['user', 'pc', 'date', 'activity'])
         
         # Данные устройств
         print("Loading device data...")
-        self.device_data = pd.read_csv(os.path.join(dataset_path, 'device.csv'))
-        self.device_data['date'] = pd.to_datetime(self.device_data['date'])
+        try:
+            self.device_data = pd.read_csv(os.path.join(dataset_path, 'device.csv'))
+            date_column = next((col for col in ['date', 'timestamp'] if col in self.device_data.columns), None)
+            if date_column:
+                self.device_data[date_column] = pd.to_datetime(self.device_data[date_column])
+                if date_column != 'date':
+                    self.device_data = self.device_data.rename(columns={date_column: 'date'})
+        except Exception as e:
+            print(f"Error loading device data: {e}")
+            self.device_data = pd.DataFrame(columns=['user', 'pc', 'date', 'activity'])
         
         # HTTP данные
         print("Loading HTTP data...")
-        self.http_data = pd.read_csv(os.path.join(dataset_path, 'http.csv'))
-        self.http_data['date'] = pd.to_datetime(self.http_data['date'])
+        try:
+            self.http_data = pd.read_csv(os.path.join(dataset_path, 'http.csv'))
+            # Проверяем наличие столбца user или id
+            if 'id' in self.http_data.columns and 'user' not in self.http_data.columns:
+                self.http_data = self.http_data.rename(columns={'id': 'user'})
+            
+            # Проверяем и преобразуем столбец с датой
+            date_column = next((col for col in ['date', 'timestamp'] if col in self.http_data.columns), None)
+            if date_column:
+                self.http_data[date_column] = pd.to_datetime(self.http_data[date_column])
+                if date_column != 'date':
+                    self.http_data = self.http_data.rename(columns={date_column: 'date'})
+            
+            # Если нет столбца url, но есть website
+            if 'website' in self.http_data.columns and 'url' not in self.http_data.columns:
+                self.http_data = self.http_data.rename(columns={'website': 'url'})
+                
+        except Exception as e:
+            print(f"Error loading HTTP data: {e}")
+            self.http_data = pd.DataFrame(columns=['user', 'pc', 'date', 'url'])
         
         # Email данные
         print("Loading email data...")
-        self.email_data = pd.read_csv(os.path.join(dataset_path, 'email.csv'))
-        self.email_data['date'] = pd.to_datetime(self.email_data['date'])
+        try:
+            self.email_data = pd.read_csv(os.path.join(dataset_path, 'email.csv'))
+            date_column = next((col for col in ['date', 'timestamp'] if col in self.email_data.columns), None)
+            if date_column:
+                self.email_data[date_column] = pd.to_datetime(self.email_data[date_column])
+                if date_column != 'date':
+                    self.email_data = self.email_data.rename(columns={date_column: 'date'})
+        except Exception as e:
+            print(f"Error loading email data: {e}")
+            self.email_data = pd.DataFrame(columns=['from', 'to', 'date'])
         
         # Файловые операции (только для r3.1)
         if dataset == 'r3.1':
             print("Loading file data...")
-            self.file_data = pd.read_csv(os.path.join(dataset_path, 'file.csv'))
-            self.file_data['date'] = pd.to_datetime(self.file_data['date'])
+            try:
+                self.file_data = pd.read_csv(os.path.join(dataset_path, 'file.csv'))
+                # Проверяем и преобразуем столбец с датой
+                date_column = 'date' if 'date' in self.file_data.columns else 'timestamp'
+                self.file_data[date_column] = pd.to_datetime(self.file_data[date_column])
+                if date_column != 'date':
+                    self.file_data = self.file_data.rename(columns={date_column: 'date'})
+            except Exception as e:
+                print(f"Error loading file data: {e}")
+                self.file_data = pd.DataFrame(columns=['user', 'pc', 'date', 'filename'])
+        else:
+            self.file_data = pd.DataFrame(columns=['user', 'pc', 'date', 'filename'])
         
         # Психометрические данные
-        print("Loading psychometric data...")
-        self.psychometric_data = pd.read_csv(os.path.join(dataset_path, 'psychometric.csv'))
+        try:
+            print("Loading psychometric data...")
+            self.psychometric_data = pd.read_csv(os.path.join(dataset_path, 'psychometric.csv'))
+        except Exception as e:
+            print(f"Error loading psychometric data: {e}")
+            self.psychometric_data = pd.DataFrame(columns=['user_id', 'O', 'C', 'E', 'A', 'N'])
         
         # LDAP данные
         print("Loading LDAP data...")
-        ldap_files = glob.glob(os.path.join(dataset_path, 'LDAP', '*.csv'))
-        ldap_dfs = []
-        for file in ldap_files:
-            df = pd.read_csv(file)
-            month = os.path.basename(file).split('.')[0]  # Извлекаем месяц из имени файла
-            df['month'] = month
-            ldap_dfs.append(df)
-        self.ldap_data = pd.concat(ldap_dfs, ignore_index=True)
+        try:
+            ldap_files = glob.glob(os.path.join(dataset_path, 'LDAP', '*.csv'))
+            if ldap_files:
+                ldap_dfs = []
+                for file in ldap_files:
+                    try:
+                        df = pd.read_csv(file)
+                        month = os.path.basename(file).split('.')[0]
+                        df['month'] = month
+                        ldap_dfs.append(df)
+                    except Exception as e:
+                        print(f"Error loading LDAP file {file}: {e}")
+                if ldap_dfs:
+                    self.ldap_data = pd.concat(ldap_dfs, ignore_index=True)
+                else:
+                    self.ldap_data = pd.DataFrame(columns=['user_id', 'role', 'month'])
+            else:
+                print("No LDAP files found")
+                self.ldap_data = pd.DataFrame(columns=['user_id', 'role', 'month'])
+        except Exception as e:
+            print(f"Error processing LDAP data: {e}")
+            self.ldap_data = pd.DataFrame(columns=['user_id', 'role', 'month'])
         
     def is_weekend(self, date):
         """Проверка является ли день выходным"""
@@ -113,14 +184,16 @@ class DataLoader:
             # Фильтруем данные пользователя
             user_logons = self.logon_data[self.logon_data['user'] == user]
             user_devices = self.device_data[self.device_data['user'] == user]
-            user_http = self.http_data[self.http_data['user'] == user]
+            user_http = self.http_data[self.http_data['user'] == user] if 'user' in self.http_data.columns else pd.DataFrame()
             user_emails = self.email_data[
                 (self.email_data['from'] == user) | 
                 (self.email_data['to'].str.contains(user, na=False))
-            ]
+            ] if not self.email_data.empty else pd.DataFrame()
             
             # Базовые характеристики
             total_days = (user_logons['date'].max() - user_logons['date'].min()).days + 1
+            if total_days == 0:  # Если все события в один день
+                total_days = 1
             
             # Характеристики входов
             logon_features = {
@@ -138,22 +211,22 @@ class DataLoader:
             
             # HTTP характеристики
             http_features = {
-                'avg_http_requests_per_day': len(user_http) / total_days,
-                'unique_domains': user_http['url'].apply(lambda x: x.split('/')[0]).nunique(),
+                'avg_http_requests_per_day': len(user_http) / total_days if not user_http.empty else 0,
+                'unique_domains': user_http['url'].apply(lambda x: x.split('/')[0]).nunique() if not user_http.empty and 'url' in user_http.columns else 0,
             }
             
             # Email характеристики
             email_features = {
-                'avg_emails_sent_per_day': len(user_emails[user_emails['from'] == user]) / total_days,
-                'avg_emails_received_per_day': len(user_emails[user_emails['to'].str.contains(user, na=False)]) / total_days,
+                'avg_emails_sent_per_day': len(user_emails[user_emails['from'] == user]) / total_days if not user_emails.empty else 0,
+                'avg_emails_received_per_day': len(user_emails[user_emails['to'].str.contains(user, na=False)]) / total_days if not user_emails.empty else 0,
                 'unique_email_contacts': pd.concat([
                     user_emails['to'].str.split(';').explode(),
                     user_emails['from']
-                ]).nunique(),
+                ]).nunique() if not user_emails.empty else 0,
             }
             
             # Дополнительные характеристики для r3.1
-            if self.current_dataset == 'r3.1' and self.file_data is not None:
+            if self.current_dataset == 'r3.1' and not self.file_data.empty:
                 user_files = self.file_data[self.file_data['user'] == user]
                 file_features = {
                     'avg_file_copies_per_day': len(user_files) / total_days,
@@ -166,13 +239,18 @@ class DataLoader:
                 }
             
             # Психометрические характеристики
-            psycho_features = self.psychometric_data[self.psychometric_data['user_id'] == user].iloc[0].to_dict()
-            psycho_features = {k: v for k, v in psycho_features.items() if k in ['O', 'C', 'E', 'A', 'N']}
+            user_psycho = self.psychometric_data[self.psychometric_data['user_id'] == user]
+            if not user_psycho.empty:
+                psycho_features = user_psycho.iloc[0][['O', 'C', 'E', 'A', 'N']].to_dict()
+            else:
+                psycho_features = {
+                    'O': 0, 'C': 0, 'E': 0, 'A': 0, 'N': 0
+                }
             
             # LDAP характеристики
-            latest_ldap = self.ldap_data[self.ldap_data['user_id'] == user].iloc[-1] if len(self.ldap_data[self.ldap_data['user_id'] == user]) > 0 else None
+            user_ldap = self.ldap_data[self.ldap_data['user_id'] == user]
             ldap_features = {
-                'is_admin': 1 if latest_ldap is not None and latest_ldap['role'] == 'ITAdmin' else 0,
+                'is_admin': 1 if not user_ldap.empty and user_ldap.iloc[-1]['role'] == 'ITAdmin' else 0,
             }
             
             # Объединяем все характеристики
@@ -196,8 +274,9 @@ class DataLoader:
         numeric_columns = self.features.select_dtypes(include=[np.number]).columns
         numeric_columns = numeric_columns.drop(['user_id', 'is_admin']) if 'user_id' in numeric_columns else numeric_columns
         
-        scaler = StandardScaler()
-        self.features[numeric_columns] = scaler.fit_transform(self.features[numeric_columns])
+        if not numeric_columns.empty:
+            scaler = StandardScaler()
+            self.features[numeric_columns] = scaler.fit_transform(self.features[numeric_columns])
         
         return self.features
         
