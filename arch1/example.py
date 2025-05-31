@@ -13,9 +13,12 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 from tqdm import tqdm
 import time
 
+# Глобальные константы
+ANOMALY_THRESHOLD = 0.67  # Пороговое значение вероятности для определения аномального поведения
+
 def create_anomaly_detection_system():
     """Создание системы детектирования аномалий"""
-    print("\n[1/4] Инициализация детекторов...")
+    print("\nИнициализация детекторов...")
     
     # Создаем базовые детекторы с повышенной чувствительностью
     detectors = {
@@ -29,21 +32,21 @@ def create_anomaly_detection_system():
     print("Настройка весов детекторов...")
     # Создаем веса для каждого детектора
     weights = {
-        'time_activity': 1.0,    # Базовый вес для временных паттернов
-        'data_frequency': 0.8,   # Пониженный вес для частоты обращений
-        'data_volume': 0.8,      # Пониженный вес для объема данных
+        'time_activity': 1.5,    # Повышенный вес для временных паттернов
+        'data_frequency': 1.2,   # Повышенный вес для частоты обращений
+        'data_volume': 1.2,      # Повышенный вес для объема данных
         'resource_access': 1.0,  # Базовый вес для доступа к ресурсам
         'file_activity': 1.0     # Базовый вес для файловых операций
     }
     
     # Создаем ансамбль
     print("Создание ансамбля детекторов...")
-    ensemble = EnsembleDetector(detectors, weights)
+    ensemble = EnsembleDetector(detectors, weights, threshold=ANOMALY_THRESHOLD)
     return ensemble
 
 def evaluate_detection(features, predictions, probabilities, loader, dataset):
     """Оценка качества обнаружения инсайдеров"""
-    print("\n[3/4] Оценка результатов детектирования...")
+    print("\nОценка результатов детектирования...")
     
     print("Получение списка реальных инсайдеров...")
     # Получаем список реальных инсайдеров для текущего датасета
@@ -145,28 +148,25 @@ def main():
         print(f"{'='*50}")
         
         # Загружаем данные
-        print(f"\n[1/5] Загрузка данных из датасета {dataset}...")
+        print(f"\n[1/4] Загрузка данных из датасета {dataset}...")
         loader = DataLoader('dataset')
         loader.load_data(dataset)
         
         # Подготавливаем признаки
-        print("\n[2/5] Подготовка признаков...")
+        print("\n[2/4] Подготовка признаков...")
         features = loader.prepare_features()
         print(f"Извлечено {features.shape[1]} признаков для {features.shape[0]} пользователей")
         
-        # Используем только признаки без меток
-        X = features.drop(['user_id'], axis=1)
-        
-        # Создаем систему детектирования
-        print("\n[3/5] Создание системы детектирования...")
+        # Создаем и обучаем систему детектирования
+        print("\n[3/4] Создание и обучение системы детектирования...")
         system = create_anomaly_detection_system()
         
         # Обучаем систему
-        print("\n[4/5] Обучение моделей...")
-        system.fit(X)
+        print("\nОбучение моделей...")
+        system.fit(X := features.drop(['user_id'], axis=1))
         
         # Получаем предсказания для всех пользователей
-        print("\n[5/5] Анализ поведения пользователей...")
+        print("\n[4/4] Анализ поведения пользователей...")
         predictions = system.predict(X)
         probabilities = system.predict_proba(X)
         
@@ -175,10 +175,10 @@ def main():
         
         # Анализируем пользователей с высоким риском
         print("\nПодробный анализ пользователей высокого риска...")
-        high_risk_mask = probabilities > 0.6  # Снижен порог для более чувствительного обнаружения
+        high_risk_mask = probabilities > ANOMALY_THRESHOLD  # Порог для определения аномалий
         high_risk_users = features.loc[high_risk_mask, 'user_id']
         
-        print(f"\nНайдено {len(high_risk_users)} пользователей с высоким риском (p > 0.6)")
+        print(f"\nНайдено {len(high_risk_users)} пользователей с высоким риском (p > {ANOMALY_THRESHOLD})")
         print("="*80)
         
         for user in tqdm(high_risk_users, desc="Анализ пользователей высокого риска"):

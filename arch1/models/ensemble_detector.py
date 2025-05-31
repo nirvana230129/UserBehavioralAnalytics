@@ -3,7 +3,7 @@ from sklearn.ensemble import RandomForestClassifier
 from .base_model import AnomalyDetector
 
 class EnsembleDetector(AnomalyDetector):
-    def __init__(self, detectors, weights=None):
+    def __init__(self, detectors, weights=None, threshold=0.5):
         """
         Parameters:
         -----------
@@ -11,10 +11,13 @@ class EnsembleDetector(AnomalyDetector):
             Словарь детекторов {name: detector}
         weights : dict, optional
             Веса для каждого детектора {name: weight}
+        threshold : float, default=0.5
+            Порог для определения аномалии
         """
         super().__init__()
         self.detectors = detectors
         self.weights = weights or {name: 1.0 for name in detectors.keys()}
+        self.threshold = threshold
         
     def fit(self, X, y=None):
         """Обучение всех базовых детекторов"""
@@ -51,7 +54,7 @@ class EnsembleDetector(AnomalyDetector):
         final_probas = weighted_sum / total_weight if total_weight > 0 else weighted_sum
         return np.clip(final_probas, 0, 1)  # Гарантируем, что итоговые вероятности в [0, 1]
         
-    def predict(self, X, threshold=0.6):
+    def predict(self, X, threshold=None):
         """
         Предсказание аномальности
         
@@ -59,8 +62,8 @@ class EnsembleDetector(AnomalyDetector):
         -----------
         X : pandas.DataFrame
             Входные данные
-        threshold : float, default=0.6
-            Порог для определения аномалии
+        threshold : float, optional
+            Порог для определения аномалии. Если не указан, используется порог из конструктора
             
         Returns:
         --------
@@ -68,6 +71,7 @@ class EnsembleDetector(AnomalyDetector):
             Массив меток: -1 - аномалия, 1 - норма
         """
         probas = self.predict_proba(X)
+        threshold = threshold if threshold is not None else self.threshold
         return np.where(probas > threshold, -1, 1)
         
     def update_weights(self, new_weights):
