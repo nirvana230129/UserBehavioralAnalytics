@@ -25,25 +25,20 @@ class DataLoader:
         self.psychometric_data = None
         self.features = None
         self.insiders_data = None
-        
-    # def load_insiders_info(self):
-    #     """Загрузка информации об инсайдерах"""
-    #     insiders_data = pd.DataFrame({
-    #         'dataset': ['r2', 'r3.1', 'r2'],
-    #         'scenario': [1, 1, 2],
-    #         'user': ['ONS0995', 'CSF0929', 'CCH0959'],
-    #         'start': pd.to_datetime(['3/6/2010 1:41:56', '07/01/2010 01:24:58', '08/02/2010 10:34:31']),
-    #         'end': pd.to_datetime(['3/20/2010 8:10:12', '07/16/2010 06:52:00', '09/30/2010 15:04:03']),
-    #     })
-    #     self.insiders_data = insiders_data
-    #     return insiders_data
-    
+
     def load_insiders_info(self):
         """Загрузка информации об инсайдерах"""
-        insiders_data = pd.read_csv('dataset/answers/insiders.csv')
-        insiders_data = insiders_data[insiders_data['details'].str.startswith(self.current_dataset)]
-        self.insiders_data = insiders_data
-        return insiders_data
+        try:
+            insiders_data = pd.read_csv('dataset/answers/insiders.csv')
+            # Фильтруем только по текущему датасету (r1, r2, r3.1 и т.д.)
+            self.insiders_data = insiders_data[insiders_data['dataset'] == float(self.current_dataset.replace('r', ''))]
+            print(f"\nЗагружена информация об инсайдерах для датасета {self.current_dataset}:")
+            print(self.insiders_data)
+            return self.insiders_data
+        except Exception as e:
+            print(f"Ошибка при загрузке информации об инсайдерах: {e}")
+            self.insiders_data = pd.DataFrame(columns=['dataset', 'scenario', 'user', 'start', 'end'])
+            return self.insiders_data
         
     def load_data(self, dataset='r3.1'):
         """Загрузка данных из указанного набора"""
@@ -317,12 +312,19 @@ class DataLoader:
             })
         
         # Добавляем HTTP запросы
-        http = self.http_data[self.http_data['user'] == user]
+        if 'user' in self.http_data.columns:
+            http = self.http_data[self.http_data['user'] == user]
+        elif 'id' in self.http_data.columns:
+            http = self.http_data[self.http_data['id'] == user]
+        else:
+            http = pd.DataFrame()  # Пустой DataFrame если нет нужных столбцов
+            
         for _, row in http.iterrows():
+            url = row['url'] if 'url' in row else row.get('website', 'unknown')
             timeline.append({
                 'date': row['date'],
                 'type': 'http',
-                'details': f"Visited {row['url']}"
+                'details': f"Visited {url}"
             })
         
         # Добавляем email активность

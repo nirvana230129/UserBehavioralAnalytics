@@ -19,21 +19,21 @@ def create_anomaly_detection_system():
     
     # Создаем базовые детекторы с повышенной чувствительностью
     detectors = {
-        'time_activity': TimeActivityDetector(contamination=0.05),
-        'data_frequency': DataFrequencyDetector(window_size=3600, contamination=0.05),
-        'data_volume': DataVolumeDetector(window_size=3600, contamination=0.05),
-        'resource_access': ResourceAccessDetector(contamination=0.05),
-        'file_activity': FileActivityDetector(contamination=0.05)
+        'time_activity': TimeActivityDetector(contamination=0.01),
+        'data_frequency': DataFrequencyDetector(window_size=1800, contamination=0.01),
+        'data_volume': DataVolumeDetector(window_size=1800, contamination=0.01),
+        'resource_access': ResourceAccessDetector(contamination=0.01),
+        'file_activity': FileActivityDetector(contamination=0.01)
     }
         
     print("Настройка весов детекторов...")
     # Создаем веса для каждого детектора
     weights = {
-        'time_activity': 1.5,    # Повышенный вес для временных паттернов
-        'data_frequency': 1.2,   # Повышенный вес для частоты обращений
-        'data_volume': 1.2,      # Повышенный вес для объема данных
-        'resource_access': 1.5,  # Повышенный вес для доступа к ресурсам
-        'file_activity': 1.5     # Повышенный вес для файловых операций
+        'time_activity': 1.0,    # Базовый вес для временных паттернов
+        'data_frequency': 0.8,   # Пониженный вес для частоты обращений
+        'data_volume': 0.8,      # Пониженный вес для объема данных
+        'resource_access': 1.0,  # Базовый вес для доступа к ресурсам
+        'file_activity': 1.0     # Базовый вес для файловых операций
     }
     
     # Создаем ансамбль
@@ -47,9 +47,12 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
     
     print("Получение списка реальных инсайдеров...")
     # Получаем список реальных инсайдеров для текущего датасета
-    real_insiders = loader.insiders_data[loader.insiders_data['dataset'] == dataset]['user'].tolist()
+    real_insiders = loader.insiders_data['user'].tolist()
+    print(f"Найдено инсайдеров в датасете: {len(real_insiders)}")
+    if real_insiders:
+        print("Список инсайдеров:", real_insiders)
     
-    print("Подготовка массива истинных меток...")
+    print("\nПодготовка массива истинных меток...")
     # Создаем массив истинных меток
     y_true = np.zeros(len(features))
     for idx, user in tqdm(enumerate(features['user_id']), 
@@ -58,9 +61,9 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
         if user in real_insiders:
             y_true[idx] = 1
             
-    print("Вычисление метрик качества...")
-    # Преобразуем предсказания из [-1, 1] в [0, 1]
-    y_pred = (predictions == -1).astype(int)
+    print("\nВычисление метрик качества...")
+    # Преобразуем предсказания из [-1, 1] в [0, 1], где 1 - аномалия
+    y_pred = (predictions == -1).astype(int)  # -1 это аномалия, поэтому сравниваем с -1
     
     # Вычисляем метрики
     precision = precision_score(y_true, y_pred, zero_division=0)
@@ -91,30 +94,42 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
     
     # Вывод результатов
     print("\nРезультаты анализа:")
+    print("="*50)
     print(f"Всего пользователей проанализировано: {len(features)}")
     print(f"Обнаружено потенциальных аномалий: {len(detected_insiders) + len(false_positives)}")
     print(f"Правильно обнаружено инсайдеров: {len(detected_insiders)}")
     print(f"Ложных срабатываний: {len(false_positives)}")
     print(f"Пропущено инсайдеров: {len(missed_insiders)}")
+    print("="*50)
     
-    print("\nОбнаруженные инсайдеры:")
-    for user, prob in detected_insiders:
-        insider_info = loader.insiders_data[
-            (loader.insiders_data['dataset'] == dataset) & 
-            (loader.insiders_data['user'] == user)
-        ].iloc[0]
-        print(f"- {user} (вероятность: {prob:.3f})")
-        print(f"  Сценарий: {insider_info['scenario']}")
-        print(f"  Период активности: {insider_info['start']} - {insider_info['end']}")
+    if detected_insiders:
+        print("\nОбнаруженные инсайдеры:")
+        print("-"*50)
+        for user, prob in detected_insiders:
+            insider_info = loader.insiders_data[loader.insiders_data['user'] == user].iloc[0]
+            print(f"Пользователь: {user}")
+            print(f"Вероятность: {prob:.3f}")
+            print(f"Сценарий: {insider_info['scenario']}")
+            print(f"Период активности: {insider_info['start']} - {insider_info['end']}")
+            print("-"*50)
     
     if missed_insiders:
         print("\nПропущенные инсайдеры:")
+        print("-"*50)
         for user, prob in missed_insiders:
-            print(f"- {user} (вероятность: {prob:.3f})")
+            print(f"Пользователь: {user}")
+            print(f"Вероятность: {prob:.3f}")
+            insider_info = loader.insiders_data[loader.insiders_data['user'] == user].iloc[0]
+            print(f"Сценарий: {insider_info['scenario']}")
+            print(f"Период активности: {insider_info['start']} - {insider_info['end']}")
+            print("-"*50)
     
     print("\nЛожные срабатывания (топ-5 по вероятности):")
+    print("-"*50)
     for user, prob in sorted(false_positives, key=lambda x: x[1], reverse=True)[:5]:
-        print(f"- {user} (вероятность: {prob:.3f})")
+        print(f"Пользователь: {user}")
+        print(f"Вероятность: {prob:.3f}")
+        print("-"*50)
 
 def main():
     start_time = time.time()
@@ -122,6 +137,7 @@ def main():
     
     # Анализируем все доступные датасеты
     datasets = ['r1', 'r2', 'r3.1']
+    datasets = ['r2']
     
     for dataset in datasets:
         print(f"\n{'='*50}")
@@ -159,34 +175,42 @@ def main():
         
         # Анализируем пользователей с высоким риском
         print("\nПодробный анализ пользователей высокого риска...")
-        high_risk_mask = probabilities > 0.8
+        high_risk_mask = probabilities > 0.6  # Снижен порог для более чувствительного обнаружения
         high_risk_users = features.loc[high_risk_mask, 'user_id']
         
-        print(f"\nНайдено {len(high_risk_users)} пользователей с высоким риском (p > 0.8)")
+        print(f"\nНайдено {len(high_risk_users)} пользователей с высоким риском (p > 0.6)")
+        print("="*80)
         
         for user in tqdm(high_risk_users, desc="Анализ пользователей высокого риска"):
             print(f"\nАнализ пользователя {user}:")
+            print("-"*80)
+            
             # Получаем временную линию событий пользователя
             timeline = loader.get_user_timeline(user)
             print(f"Всего событий: {len(timeline)}")
+            
             if not timeline.empty:
-                print("Типы событий:")
+                print("\nТипы событий:")
+                print("-"*40)
                 print(timeline['type'].value_counts())
+                print("-"*40)
                 
                 # Показываем примеры подозрительных действий
                 print("\nПримеры последних действий:")
+                print("-"*40)
                 print(timeline.tail().to_string())
+                print("-"*40)
                 
                 # Если это реальный инсайдер, показываем дополнительную информацию
-                insider_info = loader.insiders_data[
-                    (loader.insiders_data['dataset'] == dataset) & 
-                    (loader.insiders_data['user'] == user)
-                ]
+                insider_info = loader.insiders_data[loader.insiders_data['user'] == user]
                 if not insider_info.empty:
                     info = insider_info.iloc[0]
-                    print("\nПОДТВЕРЖДЕННЫЙ ИНСАЙДЕР!")
+                    print("\n!!! ПОДТВЕРЖДЕННЫЙ ИНСАЙДЕР !!!")
+                    print("-"*40)
                     print(f"Сценарий: {info['scenario']}")
                     print(f"Период активности: {info['start']} - {info['end']}")
+                    print("-"*40)
+            print("="*80)
     
     end_time = time.time()
     execution_time = end_time - start_time

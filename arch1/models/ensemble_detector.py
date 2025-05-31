@@ -41,13 +41,17 @@ class EnsembleDetector(AnomalyDetector):
         total_weight = 0
         
         for name, pred in base_predictions.items():
+            # Нормализуем предсказания каждого детектора в диапазон [0, 1]
+            normalized_pred = np.clip(pred, 0, 1)  # Обрезаем значения до диапазона [0, 1]
             weight = self.weights[name]
-            weighted_sum += pred * weight
+            weighted_sum += normalized_pred * weight
             total_weight += weight
             
-        return weighted_sum / total_weight if total_weight > 0 else weighted_sum
+        # Нормализуем итоговые вероятности
+        final_probas = weighted_sum / total_weight if total_weight > 0 else weighted_sum
+        return np.clip(final_probas, 0, 1)  # Гарантируем, что итоговые вероятности в [0, 1]
         
-    def predict(self, X, threshold=0.8):
+    def predict(self, X, threshold=0.6):
         """
         Предсказание аномальности
         
@@ -55,7 +59,7 @@ class EnsembleDetector(AnomalyDetector):
         -----------
         X : pandas.DataFrame
             Входные данные
-        threshold : float, default=0.8
+        threshold : float, default=0.6
             Порог для определения аномалии
             
         Returns:

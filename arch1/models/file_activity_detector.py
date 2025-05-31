@@ -111,7 +111,12 @@ class FileActivityDetector(AnomalyDetector):
         # Преобразуем decision_function в вероятности
         scores = self.model.decision_function(features)
         # Нормализуем scores в диапазон [0, 1], где 1 - наиболее аномальное
-        probs = 1 - (scores - scores.min()) / (scores.max() - scores.min())
+        score_range = scores.max() - scores.min()
+        if score_range > 0:
+            probs = 1 - (scores - scores.min()) / score_range
+        else:
+            # Если все оценки одинаковые, считаем все наблюдения нормальными
+            probs = np.zeros_like(scores)
         return probs 
 
     def _prepare_features(self, X):
