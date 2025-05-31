@@ -5,7 +5,6 @@ from models.resource_access_detector import ResourceAccessDetector
 from models.file_activity_detector import FileActivityDetector
 from models.ensemble_detector import EnsembleDetector
 from data_loader import DataLoader
-import pandas as pd
 import numpy as np
 from sklearn.metrics import precision_score, recall_score, f1_score
 from tqdm import tqdm

@@ -1,9 +1,9 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime
 import os
 from sklearn.preprocessing import StandardScaler
 import glob
+from tqdm import tqdm
 
 class DataLoader:
     def __init__(self, base_path):
@@ -14,7 +14,7 @@ class DataLoader:
             Путь к директории с данными
         """
         self.base_path = base_path
-        self.datasets = ['r1', 'r2', 'r3.1']  # Добавляем r1 в список поддерживаемых датасетов
+        self.datasets = ['r1', 'r2', 'r3.1']
         self.current_dataset = None
         self.logon_data = None
         self.device_data = None
@@ -26,15 +26,22 @@ class DataLoader:
         self.features = None
         self.insiders_data = None
         
+    # def load_insiders_info(self):
+    #     """Загрузка информации об инсайдерах"""
+    #     insiders_data = pd.DataFrame({
+    #         'dataset': ['r2', 'r3.1', 'r2'],
+    #         'scenario': [1, 1, 2],
+    #         'user': ['ONS0995', 'CSF0929', 'CCH0959'],
+    #         'start': pd.to_datetime(['3/6/2010 1:41:56', '07/01/2010 01:24:58', '08/02/2010 10:34:31']),
+    #         'end': pd.to_datetime(['3/20/2010 8:10:12', '07/16/2010 06:52:00', '09/30/2010 15:04:03']),
+    #     })
+    #     self.insiders_data = insiders_data
+    #     return insiders_data
+    
     def load_insiders_info(self):
         """Загрузка информации об инсайдерах"""
-        insiders_data = pd.DataFrame({
-            'dataset': ['r2', 'r3.1', 'r2'],
-            'scenario': [1, 1, 2],
-            'user': ['ONS0995', 'CSF0929', 'CCH0959'],
-            'start': pd.to_datetime(['3/6/2010 1:41:56', '07/01/2010 01:24:58', '08/02/2010 10:34:31']),
-            'end': pd.to_datetime(['3/20/2010 8:10:12', '07/16/2010 06:52:00', '09/30/2010 15:04:03']),
-        })
+        insiders_data = pd.read_csv('dataset/answers/insiders.csv')
+        insiders_data = insiders_data[insiders_data['details'].str.startswith(self.current_dataset)]
         self.insiders_data = insiders_data
         return insiders_data
         
@@ -52,8 +59,9 @@ class DataLoader:
         # Загрузка основных данных
         print(f"Loading data from {dataset}...")
         
+
         # Логи входа
-        print("Loading logon data...")
+        print("\tLoading logon data...")
         try:
             self.logon_data = pd.read_csv(os.path.join(dataset_path, 'logon.csv'))
             # Проверяем и преобразуем столбец с датой
@@ -66,8 +74,9 @@ class DataLoader:
             print(f"Error loading logon data: {e}")
             self.logon_data = pd.DataFrame(columns=['user', 'pc', 'date', 'activity'])
         
+
         # Данные устройств
-        print("Loading device data...")
+        print("\tLoading device data...")
         try:
             self.device_data = pd.read_csv(os.path.join(dataset_path, 'device.csv'))
             date_column = next((col for col in ['date', 'timestamp'] if col in self.device_data.columns), None)
@@ -79,8 +88,9 @@ class DataLoader:
             print(f"Error loading device data: {e}")
             self.device_data = pd.DataFrame(columns=['user', 'pc', 'date', 'activity'])
         
+
         # HTTP данные
-        print("Loading HTTP data...")
+        print("\tLoading HTTP data...")
         try:
             self.http_data = pd.read_csv(os.path.join(dataset_path, 'http.csv'))
             # Проверяем наличие столбца user или id
@@ -102,8 +112,9 @@ class DataLoader:
             print(f"Error loading HTTP data: {e}")
             self.http_data = pd.DataFrame(columns=['user', 'pc', 'date', 'url'])
         
+        
         # Email данные
-        print("Loading email data...")
+        print("\tLoading email data...")
         try:
             self.email_data = pd.read_csv(os.path.join(dataset_path, 'email.csv'))
             date_column = next((col for col in ['date', 'timestamp'] if col in self.email_data.columns), None)
@@ -115,9 +126,10 @@ class DataLoader:
             print(f"Error loading email data: {e}")
             self.email_data = pd.DataFrame(columns=['from', 'to', 'date'])
         
+        
         # Файловые операции (только для r3.1)
         if dataset == 'r3.1':
-            print("Loading file data...")
+            print("\tLoading file data...")
             try:
                 self.file_data = pd.read_csv(os.path.join(dataset_path, 'file.csv'))
                 # Проверяем и преобразуем столбец с датой
@@ -131,16 +143,18 @@ class DataLoader:
         else:
             self.file_data = pd.DataFrame(columns=['user', 'pc', 'date', 'filename'])
         
+        
         # Психометрические данные
         try:
-            print("Loading psychometric data...")
+            print("\tLoading psychometric data...")
             self.psychometric_data = pd.read_csv(os.path.join(dataset_path, 'psychometric.csv'))
         except Exception as e:
             print(f"Error loading psychometric data: {e}")
             self.psychometric_data = pd.DataFrame(columns=['user_id', 'O', 'C', 'E', 'A', 'N'])
         
+        
         # LDAP данные
-        print("Loading LDAP data...")
+        print("\tLoading LDAP data...")
         try:
             ldap_files = glob.glob(os.path.join(dataset_path, 'LDAP', '*.csv'))
             if ldap_files:
@@ -180,7 +194,7 @@ class DataLoader:
         # Получаем список всех пользователей
         users = pd.unique(self.logon_data['user'])
         
-        for user in users:
+        for user in tqdm(users):
             # Фильтруем данные пользователя
             user_logons = self.logon_data[self.logon_data['user'] == user]
             user_devices = self.device_data[self.device_data['user'] == user]
