@@ -22,8 +22,25 @@ class BaseAutoencoder(nn.Module):
         )
         
     def forward(self, x):
+        """
+        Прямой проход через автоэнкодер
+        
+        Parameters:
+        -----------
+        x : torch.Tensor
+            Входной тензор
+            
+        Returns:
+        --------
+        torch.Tensor
+            Реконструированный тензор
+        """
+        print(f"[DEBUG] Input tensor shape: {x.shape}")
+        print(f"[DEBUG] Encoder first layer weight shape: {self.encoder[0].weight.shape}")
         encoded = self.encoder(x)
+        print(f"[DEBUG] Encoded tensor shape: {encoded.shape}")
         decoded = self.decoder(encoded)
+        print(f"[DEBUG] Decoded tensor shape: {decoded.shape}")
         return decoded
     
     def encode(self, x):
