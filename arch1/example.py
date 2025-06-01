@@ -9,9 +9,11 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from data_loader import DataLoader
 import numpy as np
-from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.metrics import precision_score, recall_score, f1_score, precision_recall_curve, average_precision_score, auc
 from tqdm import tqdm
 import time
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
 # Глобальные константы
 ANOMALY_THRESHOLD = 0.806  # Пороговое значение вероятности для определения аномального поведения
@@ -44,6 +46,40 @@ def create_anomaly_detection_system():
     ensemble = EnsembleDetector(detectors, weights, threshold=ANOMALY_THRESHOLD)
     return ensemble
 
+def plot_probability_distribution(probabilities, y_true):
+    """Построение распределения вероятностей"""
+    plt.figure(figsize=(12, 6))
+    
+    # Разделяем вероятности на два класса
+    normal_probs = probabilities[y_true == 0]
+    insider_probs = probabilities[y_true == 1]
+    
+    # Строим гистограмму для обычных пользователей
+    plt.hist(normal_probs, bins=50, alpha=0.5, 
+             label=f'Обычные пользователи (min={min(normal_probs):.3f}, max={max(normal_probs):.3f})', 
+             density=True)
+    
+    # Отмечаем инсайдеров вертикальными линиями
+    if len(insider_probs) > 0:
+        for prob in insider_probs:
+            plt.axvline(x=prob, color='r', alpha=0.5)
+        # Добавляем фиктивную линию для легенды
+        plt.axvline(x=prob, color='r', alpha=0.5, 
+                   label=f'Инсайдеры (min={min(insider_probs):.3f}, max={max(insider_probs):.3f})')
+    
+    plt.axvline(x=ANOMALY_THRESHOLD, color='black', linestyle='--', label=f'Порог ({ANOMALY_THRESHOLD})')
+    
+    plt.xlim(0, 1)  # Устанавливаем фиксированные границы
+    plt.xlabel('Вероятность аномального поведения')
+    plt.ylabel('Плотность')
+    plt.title('Распределение вероятностей по классам')
+    plt.legend()
+    plt.grid(True)
+    
+    # Сохраняем график
+    plt.savefig('arch1/plots/probability_distribution.png')
+    plt.close()
+
 def evaluate_detection(features, predictions, probabilities, loader, dataset):
     """Оценка качества обнаружения инсайдеров"""
     print("\nОценка результатов детектирования...")
@@ -65,18 +101,42 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
             y_true[idx] = 1
             
     print("\nВычисление метрик качества...")
-    # Преобразуем предсказания из [-1, 1] в [0, 1], где 1 - аномалия
+    
+    # Для метрик на основе порога используем предсказания
     y_pred = (predictions == -1).astype(int)  # -1 это аномалия, поэтому сравниваем с -1
     
-    # Вычисляем метрики
-    precision = precision_score(y_true, y_pred, zero_division=0)
-    recall = recall_score(y_true, y_pred, zero_division=0)
-    f1 = f1_score(y_true, y_pred, zero_division=0)
+    # Строим графики и получаем метрики
+    print("\nПостроение графиков...")
+    pr_auc = plot_pr_curve(y_true, probabilities)
+    plot_probability_distribution(probabilities, y_true)
+    print("Графики сохранены в файлы 'arch1/plots/pr_curve.png' и 'arch1/plots/probability_distribution.png'")
+    
+    # Вычисляем Average Precision с инвертированными вероятностями
+    ap_score = average_precision_score(y_true, 1 - probabilities, average='weighted')
+    
+    # Вычисляем weighted метрики для учета несбалансированности
+    precision = precision_score(y_true, y_pred, zero_division=0, average='weighted')
+    recall = recall_score(y_true, y_pred, zero_division=0, average='weighted')
+    f1 = f1_score(y_true, y_pred, zero_division=0, average='weighted')
     
     print("\nМетрики качества обнаружения:")
-    print(f"Precision (точность): {precision:.3f}")
-    print(f"Recall (полнота): {recall:.3f}")
-    print(f"F1-score: {f1:.3f}")
+    print("-"*50)
+    print("Метрики для несбалансированных классов:")
+    print(f"PR-AUC score: {pr_auc:.3f}")
+    print(f"Average Precision score: {ap_score:.3f}")
+    
+    print(f"\nМетрики на пороге {ANOMALY_THRESHOLD}:")
+    print(f"Weighted Precision: {precision:.3f}")
+    print(f"Weighted Recall: {recall:.3f}")
+    print(f"Weighted F1-score: {f1:.3f}")
+    
+    # Дополнительная информация о балансе классов
+    n_total = len(y_true)
+    n_insiders = sum(y_true)
+    print("\nИнформация о балансе классов:")
+    print(f"Всего пользователей: {n_total}")
+    print(f"Инсайдеров: {n_insiders} ({(n_insiders/n_total)*100:.2f}%)")
+    print(f"Обычных пользователей: {n_total - n_insiders} ({((n_total-n_insiders)/n_total)*100:.2f}%)")
     
     # Анализ результатов
     print("\nАнализ результатов обнаружения...")
@@ -206,7 +266,7 @@ def main():
     print("\n=== Запуск системы обнаружения инсайдеров ===")
     
     # Анализируемый датасет
-    dataset = 'r1'  # r1, r2, r3.1
+    dataset = 'r2'  # r1, r2, r3.1
     
     # for dataset in datasets:
     print(f"\n{'='*50}")
