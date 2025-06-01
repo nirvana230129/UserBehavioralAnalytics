@@ -94,7 +94,16 @@ class EnsembleDetector(AnomalyDetector):
         """
         predictions = {}
         for name, detector in self.detectors.items():
-            pred = detector.predict_proba(X)
-            predictions[f"{name}_raw"] = pred
-            predictions[f"{name}_weighted"] = pred * self.weights[name]
+            try:
+                # Получаем сырые предсказания от детектора
+                raw_pred = detector.predict_proba(X)
+                # Нормализуем предсказания в диапазон [0, 1]
+                raw_pred = np.clip(raw_pred, 0, 1)
+                # Сохраняем исходную и взвешенную вероятности
+                predictions[f"{name}_raw"] = raw_pred
+                predictions[f"{name}_weighted"] = raw_pred * self.weights[name]
+            except Exception as e:
+                print(f"Ошибка при получении предсказаний от детектора {name}: {e}")
+                predictions[f"{name}_raw"] = np.zeros(len(X))
+                predictions[f"{name}_weighted"] = np.zeros(len(X))
         return predictions 

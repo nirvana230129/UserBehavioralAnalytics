@@ -14,7 +14,7 @@ from tqdm import tqdm
 import time
 
 # Глобальные константы
-ANOMALY_THRESHOLD = 0.67  # Пороговое значение вероятности для определения аномального поведения
+ANOMALY_THRESHOLD = 0.65  # Пороговое значение вероятности для определения аномального поведения
 
 def create_anomaly_detection_system():
     """Создание системы детектирования аномалий"""
@@ -36,7 +36,7 @@ def create_anomaly_detection_system():
         'data_frequency': 1.3,   # Средний вес для частоты обращений
         'data_volume': 0.8,      # Пониженный вес для объема данных
         'resource_access': 0.6,  # Низкий вес для доступа к ресурсам
-        'file_activity': 0.4     # Минимальный вес для файловых операций
+        'file_activity': 1.0     # Минимальный вес для файловых операций
     }
     
     # Создаем ансамбль
@@ -105,6 +105,10 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
     print(f"Пропущено инсайдеров: {len(missed_insiders)}")
     print("="*50)
     
+    # Создаем отсортированный список всех пользователей по вероятности
+    all_users_sorted = sorted(zip(features['user_id'], probabilities), key=lambda x: x[1], reverse=True)
+    user_rankings = {user: idx + 1 for idx, (user, _) in enumerate(all_users_sorted)}
+    
     if detected_insiders:
         print("\nОбнаруженные инсайдеры:")
         print("-"*50)
@@ -112,6 +116,7 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
             insider_info = loader.insiders_data[loader.insiders_data['user'] == user].iloc[0]
             print(f"Пользователь: {user}")
             print(f"Вероятность: {prob:.3f}")
+            print(f"Позиция в рейтинге: {user_rankings[user]} из {len(all_users_sorted)}")
             print(f"Сценарий: {insider_info['scenario']}")
             print(f"Период активности: {insider_info['start']} - {insider_info['end']}")
             print("-"*50)
@@ -122,6 +127,7 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
         for user, prob in missed_insiders:
             print(f"Пользователь: {user}")
             print(f"Вероятность: {prob:.3f}")
+            print(f"Позиция в рейтинге: {user_rankings[user]} из {len(all_users_sorted)}")
             insider_info = loader.insiders_data[loader.insiders_data['user'] == user].iloc[0]
             print(f"Сценарий: {insider_info['scenario']}")
             print(f"Период активности: {insider_info['start']} - {insider_info['end']}")
@@ -155,25 +161,45 @@ def analyze_insider_predictions(features, system, real_insiders):
         print(f"\nИнсайдер: {user_id}")
         print("-"*40)
         
-        # Получаем предсказания всех детекторов
-        detailed_predictions = system.get_detailed_predictions(X.iloc[[idx]])
-        
-        # Выводим результаты каждого детектора
-        for name in system.detectors.keys():
-            raw_pred = detailed_predictions[f"{name}_raw"][0]
-            weighted_pred = detailed_predictions[f"{name}_weighted"][0]
-            weight = system.weights[name]
-            print(f"{name}:")
-            print(f"  Исходная вероятность: {raw_pred:.3f}")
-            print(f"  Вес детектора: {weight:.1f}")
-            print(f"  Взвешенная вероятность: {weighted_pred:.3f}")
-            print("-"*40)
-        
-        # Получаем итоговую вероятность
-        final_prob = system.predict_proba(X.iloc[[idx]])[0]
-        print(f"Итоговая вероятность: {final_prob:.3f}")
-        print(f"Пороговое значение: {ANOMALY_THRESHOLD:.3f}")
-        print("="*80)
+        try:
+            # Получаем предсказания всех детекторов
+            detailed_predictions = system.get_detailed_predictions(X.iloc[[idx]])
+            
+            # Выводим результаты каждого детектора
+            total_weighted_prob = 0
+            total_weight = 0
+            
+            for name in system.detectors.keys():
+                try:
+                    raw_pred = detailed_predictions[f"{name}_raw"][0]
+                    weighted_pred = detailed_predictions[f"{name}_weighted"][0]
+                    weight = system.weights[name]
+                    
+                    # Нормализуем вероятности
+                    raw_pred = np.clip(raw_pred, 0, 1)
+                    weighted_pred = raw_pred * weight
+                    
+                    print(f"{name}:")
+                    print(f"  Исходная вероятность: {raw_pred:.3f}")
+                    print(f"  Вес детектора: {weight:.1f}")
+                    print(f"  Взвешенная вероятность: {weighted_pred:.3f}")
+                    print("-"*40)
+                    
+                    total_weighted_prob += weighted_pred
+                    total_weight += weight
+                except Exception as e:
+                    print(f"Ошибка при обработке детектора {name}: {e}")
+                    print("-"*40)
+            
+            # Вычисляем итоговую вероятность как среднее взвешенное
+            final_prob = total_weighted_prob / total_weight if total_weight > 0 else 0
+            print(f"Итоговая вероятность: {final_prob:.3f}")
+            print(f"Пороговое значение: {ANOMALY_THRESHOLD:.3f}")
+            print("="*80)
+            
+        except Exception as e:
+            print(f"Ошибка при анализе инсайдера {user_id}: {e}")
+            print("="*80)
 
 def main():
     start_time = time.time()
@@ -222,39 +248,24 @@ def main():
         print("\nПодробный анализ пользователей высокого риска...")
         high_risk_mask = probabilities > ANOMALY_THRESHOLD  # Порог для определения аномалий
         high_risk_users = features.loc[high_risk_mask, 'user_id']
+        high_risk_probs = probabilities[high_risk_mask]
         
         print(f"\nНайдено {len(high_risk_users)} пользователей с высоким риском (p > {ANOMALY_THRESHOLD})")
         print("="*80)
         
-        for user in tqdm(high_risk_users, desc="Анализ пользователей высокого риска"):
+        for user, prob in zip(high_risk_users, high_risk_probs):
             print(f"\nАнализ пользователя {user}:")
             print("-"*80)
+            print(f"Вероятность аномального поведения: {prob:.3f}")
             
-            # Получаем временную линию событий пользователя
-            timeline = loader.get_user_timeline(user)
-            print(f"Всего событий: {len(timeline)}")
-            
-            if not timeline.empty:
-                print("\nТипы событий:")
+            # Если это реальный инсайдер, показываем дополнительную информацию
+            insider_info = loader.insiders_data[loader.insiders_data['user'] == user]
+            if not insider_info.empty:
+                info = insider_info.iloc[0]
+                print("\n!!! ПОДТВЕРЖДЕННЫЙ ИНСАЙДЕР !!!")
                 print("-"*40)
-                print(timeline['type'].value_counts())
-                print("-"*40)
-                
-                # Показываем примеры подозрительных действий
-                print("\nПримеры последних действий:")
-                print("-"*40)
-                print(timeline.tail().to_string())
-                print("-"*40)
-                
-                # Если это реальный инсайдер, показываем дополнительную информацию
-                insider_info = loader.insiders_data[loader.insiders_data['user'] == user]
-                if not insider_info.empty:
-                    info = insider_info.iloc[0]
-                    print("\n!!! ПОДТВЕРЖДЕННЫЙ ИНСАЙДЕР !!!")
-                    print("-"*40)
-                    print(f"Сценарий: {info['scenario']}")
-                    print(f"Период активности: {info['start']} - {info['end']}")
-                    print("-"*40)
+                print(f"Сценарий: {info['scenario']}")
+                print(f"Период активности: {info['start']} - {info['end']}")
             print("="*80)
     
     end_time = time.time()
