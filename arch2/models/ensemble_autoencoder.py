@@ -63,8 +63,9 @@ class EnsembleAutoencoder(nn.Module):
         latent_features = []
         for name, detector in self.detectors.items():
             with torch.no_grad():
-                X_np = X_dict[name].values if hasattr(X_dict[name], 'values') else np.array(X_dict[name])
-                X = torch.FloatTensor(X_np).to(self.device)
+                # Подготавливаем признаки с помощью метода детектора
+                X_prepared = detector._prepare_features(X_dict[name])
+                X = torch.FloatTensor(X_prepared).to(self.device)
                 latent = detector.model.encode(X)
                 latent_features.append(latent)
         
@@ -110,7 +111,10 @@ class EnsembleAutoencoder(nn.Module):
         self.train()
         for epoch in range(epochs):
             optimizer.zero_grad()
-            output = self.forward(X_dict)
+            # Подготавливаем признаки для каждого детектора
+            prepared_X_dict = {name: detector._prepare_features(X_dict[name]) 
+                             for name, detector in self.detectors.items()}
+            output = self.forward(prepared_X_dict)
             loss = criterion(output, labels)
             loss.backward()
             optimizer.step()
@@ -152,7 +156,10 @@ class EnsembleAutoencoder(nn.Module):
         """
         self.eval()
         with torch.no_grad():
-            predictions = self.forward(X_dict)
+            # Подготавливаем признаки для каждого детектора
+            prepared_X_dict = {name: detector._prepare_features(X_dict[name]) 
+                             for name, detector in self.detectors.items()}
+            predictions = self.forward(prepared_X_dict)
             return 1 - predictions.cpu().numpy()  # Инвертируем вероятности, чтобы высокие значения соответствовали аномалиям
             
     def get_detailed_predictions(self, X):

@@ -47,6 +47,7 @@ class DataFrequencyDetector:
         # Если есть нужные столбцы, используем их
         features = []
         
+        # Основные признаки частоты
         if 'avg_http_requests_per_day' in X.columns:
             features.append(X['avg_http_requests_per_day'])
         if 'avg_emails_sent_per_day' in X.columns:
@@ -55,12 +56,14 @@ class DataFrequencyDetector:
             features.append(X['avg_emails_received_per_day'])
         if 'avg_file_copies_per_day' in X.columns:
             features.append(X['avg_file_copies_per_day'])
+        if 'avg_logons_per_day' in X.columns:
+            features.append(X['avg_logons_per_day'])
             
         if features:
             features = np.column_stack(features)
         else:
             # Если нет нужных столбцов, используем все числовые признаки
-            features = X.select_dtypes(include=[np.number]).values
+            features = X.select_dtypes(include=[np.number]).values[:, :5]  # Берем первые 5 признаков
             
         # Нормализуем признаки
         if not self.is_fitted:

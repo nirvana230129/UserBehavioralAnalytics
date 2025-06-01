@@ -47,6 +47,7 @@ class DataVolumeDetector:
         # Если есть нужные столбцы, используем их
         features = []
         
+        # Основные признаки объема
         if 'unique_domains' in X.columns:
             features.append(X['unique_domains'])
         if 'unique_email_contacts' in X.columns:
@@ -55,12 +56,14 @@ class DataVolumeDetector:
             features.append(X['unique_file_types'])
         if 'unique_pcs' in X.columns:
             features.append(X['unique_pcs'])
+        if 'avg_file_copies_per_day' in X.columns:
+            features.append(X['avg_file_copies_per_day'])
             
         if features:
             features = np.column_stack(features)
         else:
             # Если нет нужных столбцов, используем все числовые признаки
-            features = X.select_dtypes(include=[np.number]).values
+            features = X.select_dtypes(include=[np.number]).values[:, :5]  # Берем первые 5 признаков
             
         # Нормализуем признаки
         if not self.is_fitted:

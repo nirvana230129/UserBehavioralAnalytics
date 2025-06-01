@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from .base_autoencoder import BaseAutoencoder
+from sklearn.preprocessing import StandardScaler
 
 class TimeActivityDetector:
     def __init__(self, input_size=24, hidden_size=12, latent_size=6, threshold=0.1):
@@ -20,6 +21,8 @@ class TimeActivityDetector:
         self.threshold = threshold
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
+        self.scaler = StandardScaler()
+        self.is_fitted = False
         
     def _prepare_features(self, X):
         """
@@ -36,30 +39,34 @@ class TimeActivityDetector:
             Подготовленные признаки
         """
         if isinstance(X, np.ndarray):
-            print(f"[DEBUG] Shape of input array: {X.shape}")
             return X
-        
+            
         # Если есть нужные столбцы, используем их
-        if all(col in X.columns for col in ['avg_logons_per_day', 'weekend_logon_ratio', 'after_hours_logon_ratio']):
-            features = np.column_stack([
-                X['avg_logons_per_day'],
-                X['weekend_logon_ratio'],
-                X['after_hours_logon_ratio']
-            ])
+        features = []
+        
+        # Основные признаки времени
+        if 'avg_logons_per_day' in X.columns:
+            features.append(X['avg_logons_per_day'])
+        if 'weekend_logon_ratio' in X.columns:
+            features.append(X['weekend_logon_ratio'])
+        if 'after_hours_logon_ratio' in X.columns:
+            features.append(X['after_hours_logon_ratio'])
+        if 'device_usage_ratio' in X.columns:
+            features.append(X['device_usage_ratio'])
+        if 'avg_device_usage_per_day' in X.columns:
+            features.append(X['avg_device_usage_per_day'])
             
-            # Добавляем дополнительные признаки, если они есть
-            if 'avg_device_usage_per_day' in X.columns:
-                features = np.column_stack([features, X['avg_device_usage_per_day']])
-            if 'device_usage_ratio' in X.columns:
-                features = np.column_stack([features, X['device_usage_ratio']])
-                
-            print(f"[DEBUG] Shape of prepared features: {features.shape}")
-            return features
+        if features:
+            features = np.column_stack(features)
+        else:
+            # Если нет нужных столбцов, используем все числовые признаки
+            features = X.select_dtypes(include=[np.number]).values[:, :5]  # Берем первые 5 признаков
             
-        # Если нет нужных столбцов, используем все числовые признаки
-        features = X.select_dtypes(include=[np.number]).values
-        print(f"[DEBUG] Shape of numeric features: {features.shape}")
-        return features
+        # Нормализуем признаки
+        if not self.is_fitted:
+            self.is_fitted = True
+            return self.scaler.fit_transform(features)
+        return self.scaler.transform(features)
         
     def fit(self, X):
         """

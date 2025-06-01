@@ -51,18 +51,16 @@ class ResourceAccessDetector:
             features.append(X['unique_pcs'])
         if 'device_usage_ratio' in X.columns:
             features.append(X['device_usage_ratio'])
-            
-        # Психометрические характеристики
-        psych_features = ['O', 'C', 'E', 'A', 'N']
-        for feature in psych_features:
-            if feature in X.columns:
-                features.append(X[feature])
+        if 'avg_logons_per_day' in X.columns:
+            features.append(X['avg_logons_per_day'])
+        if 'after_hours_logon_ratio' in X.columns:
+            features.append(X['after_hours_logon_ratio'])
             
         if features:
             features = np.column_stack(features)
         else:
             # Если нет нужных столбцов, используем все числовые признаки
-            features = X.select_dtypes(include=[np.number]).values
+            features = X.select_dtypes(include=[np.number]).values[:, :5]  # Берем первые 5 признаков
             
         # Нормализуем признаки
         if not self.is_fitted:

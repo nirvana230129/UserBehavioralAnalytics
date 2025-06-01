@@ -48,20 +48,18 @@ class FileActivityDetector:
             features.append(X['avg_file_copies_per_day'])
         if 'unique_file_types' in X.columns:
             features.append(X['unique_file_types'])
-            
-        # Комбинированные признаки с другими активностями
-        if 'after_hours_logon_ratio' in X.columns and 'avg_file_copies_per_day' in X.columns:
-            features.append(X['after_hours_logon_ratio'] * X['avg_file_copies_per_day'])
-        if 'weekend_logon_ratio' in X.columns and 'avg_file_copies_per_day' in X.columns:
-            features.append(X['weekend_logon_ratio'] * X['avg_file_copies_per_day'])
-        if 'device_usage_ratio' in X.columns and 'avg_file_copies_per_day' in X.columns:
-            features.append(X['device_usage_ratio'] * X['avg_file_copies_per_day'])
+        if 'after_hours_logon_ratio' in X.columns:
+            features.append(X['after_hours_logon_ratio'])
+        if 'weekend_logon_ratio' in X.columns:
+            features.append(X['weekend_logon_ratio'])
+        if 'device_usage_ratio' in X.columns:
+            features.append(X['device_usage_ratio'])
             
         if features:
             features = np.column_stack(features)
         else:
             # Если нет нужных столбцов, используем все числовые признаки
-            features = X.select_dtypes(include=[np.number]).values
+            features = X.select_dtypes(include=[np.number]).values[:, :5]  # Берем первые 5 признаков
             
         # Нормализуем признаки
         if not self.is_fitted:
