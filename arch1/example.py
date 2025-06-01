@@ -32,11 +32,11 @@ def create_anomaly_detection_system():
     print("Настройка весов детекторов...")
     # Создаем веса для каждого детектора
     weights = {
-        'time_activity': 2.2,    # Максимальный вес для временных паттернов
-        'data_frequency': 1.3,   # Средний вес для частоты обращений
-        'data_volume': 0.8,      # Пониженный вес для объема данных
-        'resource_access': 0.6,  # Низкий вес для доступа к ресурсам
-        'file_activity': 1.0     # Минимальный вес для файловых операций
+        'time_activity': 1.5,    # Максимальный вес для временных паттернов
+        'data_frequency': 1.6,   # Средний вес для частоты обращений
+        'data_volume': 1.2,      # Пониженный вес для объема данных
+        'resource_access': 0.4,  # Низкий вес для доступа к ресурсам
+        'file_activity': 0.6     # Минимальный вес для файловых операций
     }
     
     # Создаем ансамбль
@@ -250,11 +250,16 @@ def main():
         high_risk_users = features.loc[high_risk_mask, 'user_id']
         high_risk_probs = probabilities[high_risk_mask]
         
+        # Сортируем пользователей по убыванию вероятности
+        high_risk_sorted = sorted(zip(high_risk_users, high_risk_probs), key=lambda x: x[1], reverse=True)
+        
         print(f"\nНайдено {len(high_risk_users)} пользователей с высоким риском (p > {ANOMALY_THRESHOLD})")
         print("="*80)
         
-        for user, prob in zip(high_risk_users, high_risk_probs):
-            print(f"\nАнализ пользователя {user}:")
+        for idx, (user, prob) in enumerate(high_risk_sorted, 1):
+            if idx == 10:
+                break
+            print(f"\nАнализ пользователя {user} ({idx}/{len(high_risk_sorted)}):")
             print("-"*80)
             print(f"Вероятность аномального поведения: {prob:.3f}")
             
