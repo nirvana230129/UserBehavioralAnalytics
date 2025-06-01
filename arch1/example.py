@@ -32,11 +32,11 @@ def create_anomaly_detection_system():
     print("Настройка весов детекторов...")
     # Создаем веса для каждого детектора
     weights = {
-        'time_activity': 1.5,    # Повышенный вес для временных паттернов
-        'data_frequency': 1.2,   # Повышенный вес для частоты обращений
-        'data_volume': 1.2,      # Повышенный вес для объема данных
-        'resource_access': 1.0,  # Базовый вес для доступа к ресурсам
-        'file_activity': 1.0     # Базовый вес для файловых операций
+        'time_activity': 2.2,    # Максимальный вес для временных паттернов
+        'data_frequency': 1.3,   # Средний вес для частоты обращений
+        'data_volume': 0.8,      # Пониженный вес для объема данных
+        'resource_access': 0.6,  # Низкий вес для доступа к ресурсам
+        'file_activity': 0.4     # Минимальный вес для файловых операций
     }
     
     # Создаем ансамбль
@@ -134,6 +134,47 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
         print(f"Вероятность: {prob:.3f}")
         print("-"*50)
 
+def analyze_insider_predictions(features, system, real_insiders):
+    """Анализ предсказаний детекторов для инсайдера"""
+    print("\nАнализ предсказаний детекторов для инсайдера:")
+    print("="*80)
+    
+    # Получаем индексы инсайдеров
+    insider_indices = features[features['user_id'].isin(real_insiders)].index
+    
+    if len(insider_indices) == 0:
+        print("Инсайдеры не найдены в данных")
+        return
+        
+    # Получаем данные без столбца user_id
+    X = features.drop(['user_id'], axis=1)
+    
+    # Для каждого инсайдера
+    for idx in insider_indices:
+        user_id = features.iloc[idx]['user_id']
+        print(f"\nИнсайдер: {user_id}")
+        print("-"*40)
+        
+        # Получаем предсказания всех детекторов
+        detailed_predictions = system.get_detailed_predictions(X.iloc[[idx]])
+        
+        # Выводим результаты каждого детектора
+        for name in system.detectors.keys():
+            raw_pred = detailed_predictions[f"{name}_raw"][0]
+            weighted_pred = detailed_predictions[f"{name}_weighted"][0]
+            weight = system.weights[name]
+            print(f"{name}:")
+            print(f"  Исходная вероятность: {raw_pred:.3f}")
+            print(f"  Вес детектора: {weight:.1f}")
+            print(f"  Взвешенная вероятность: {weighted_pred:.3f}")
+            print("-"*40)
+        
+        # Получаем итоговую вероятность
+        final_prob = system.predict_proba(X.iloc[[idx]])[0]
+        print(f"Итоговая вероятность: {final_prob:.3f}")
+        print(f"Пороговое значение: {ANOMALY_THRESHOLD:.3f}")
+        print("="*80)
+
 def main():
     start_time = time.time()
     print("\n=== Запуск системы обнаружения инсайдеров ===")
@@ -164,6 +205,10 @@ def main():
         # Обучаем систему
         print("\nОбучение моделей...")
         system.fit(X := features.drop(['user_id'], axis=1))
+        
+        # Анализируем предсказания для инсайдера
+        real_insiders = loader.insiders_data['user'].tolist()
+        analyze_insider_predictions(features, system, real_insiders)
         
         # Получаем предсказания для всех пользователей
         print("\n[4/4] Анализ поведения пользователей...")

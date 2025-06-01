@@ -76,4 +76,25 @@ class EnsembleDetector(AnomalyDetector):
         
     def update_weights(self, new_weights):
         """Обновление весов базовых детекторов"""
-        self.weights.update(new_weights) 
+        self.weights.update(new_weights)
+        
+    def get_detailed_predictions(self, X):
+        """
+        Получение детальных предсказаний от каждого детектора
+        
+        Parameters:
+        -----------
+        X : pandas.DataFrame
+            Входные данные
+            
+        Returns:
+        --------
+        dict
+            Словарь с предсказаниями каждого детектора и их взвешенными значениями
+        """
+        predictions = {}
+        for name, detector in self.detectors.items():
+            pred = detector.predict_proba(X)
+            predictions[f"{name}_raw"] = pred
+            predictions[f"{name}_weighted"] = pred * self.weights[name]
+        return predictions 
