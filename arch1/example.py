@@ -14,7 +14,7 @@ from tqdm import tqdm
 import time
 
 # Глобальные константы
-ANOMALY_THRESHOLD = 0.807  # Пороговое значение вероятности для определения аномального поведения
+ANOMALY_THRESHOLD = 0.806  # Пороговое значение вероятности для определения аномального поведения
 
 def create_anomaly_detection_system():
     """Создание системы детектирования аномалий"""
@@ -205,73 +205,72 @@ def main():
     start_time = time.time()
     print("\n=== Запуск системы обнаружения инсайдеров ===")
     
-    # Анализируем все доступные датасеты
-    datasets = ['r1', 'r2', 'r3.1']
-    datasets = ['r2']
+    # Анализируемый датасет
+    dataset = 'r1'  # r1, r2, r3.1
     
-    for dataset in datasets:
-        print(f"\n{'='*50}")
-        print(f"Анализ датасета {dataset}")
-        print(f"{'='*50}")
+    # for dataset in datasets:
+    print(f"\n{'='*50}")
+    print(f"Анализ датасета {dataset}")
+    print(f"{'='*50}")
+    
+    # Загружаем данные
+    print(f"\n[1/4] Загрузка данных из датасета {dataset}...")
+    loader = DataLoader('dataset')
+    loader.load_data(dataset)
+    
+    # Подготавливаем признаки
+    print("\n[2/4] Подготовка признаков...")
+    features = loader.prepare_features()
+    print(f"Извлечено {features.shape[1]} признаков для {features.shape[0]} пользователей")
+    
+    # Создаем и обучаем систему детектирования
+    print("\n[3/4] Создание и обучение системы детектирования...")
+    system = create_anomaly_detection_system()
+    
+    # Обучаем систему
+    print("\nОбучение моделей...")
+    system.fit(X := features.drop(['user_id'], axis=1))
+    
+    # Анализируем предсказания для инсайдера
+    real_insiders = loader.insiders_data['user'].tolist()
+    analyze_insider_predictions(features, system, real_insiders)
+    
+    # Получаем предсказания для всех пользователей
+    print("\n[4/4] Анализ поведения пользователей...")
+    predictions = system.predict(X)
+    probabilities = system.predict_proba(X)
+    
+    # Оцениваем качество обнаружения
+    evaluate_detection(features, predictions, probabilities, loader, dataset)
+    
+    # Анализируем пользователей с высоким риском
+    print("\nПодробный анализ пользователей высокого риска...")
+    high_risk_mask = probabilities > ANOMALY_THRESHOLD  # Порог для определения аномалий
+    high_risk_users = features.loc[high_risk_mask, 'user_id']
+    high_risk_probs = probabilities[high_risk_mask]
+    
+    # Сортируем пользователей по убыванию вероятности
+    high_risk_sorted = sorted(zip(high_risk_users, high_risk_probs), key=lambda x: x[1], reverse=True)
+    
+    print(f"\nНайдено {len(high_risk_users)} пользователей с высоким риском (p > {ANOMALY_THRESHOLD})")
+    print("="*80)
+    
+    for idx, (user, prob) in enumerate(high_risk_sorted, 1):
+        if idx == 10:
+            break
+        print(f"\nАнализ пользователя {user} ({idx}/{len(high_risk_sorted)}):")
+        print("-"*80)
+        print(f"Вероятность аномального поведения: {prob:.3f}")
         
-        # Загружаем данные
-        print(f"\n[1/4] Загрузка данных из датасета {dataset}...")
-        loader = DataLoader('dataset')
-        loader.load_data(dataset)
-        
-        # Подготавливаем признаки
-        print("\n[2/4] Подготовка признаков...")
-        features = loader.prepare_features()
-        print(f"Извлечено {features.shape[1]} признаков для {features.shape[0]} пользователей")
-        
-        # Создаем и обучаем систему детектирования
-        print("\n[3/4] Создание и обучение системы детектирования...")
-        system = create_anomaly_detection_system()
-        
-        # Обучаем систему
-        print("\nОбучение моделей...")
-        system.fit(X := features.drop(['user_id'], axis=1))
-        
-        # Анализируем предсказания для инсайдера
-        real_insiders = loader.insiders_data['user'].tolist()
-        analyze_insider_predictions(features, system, real_insiders)
-        
-        # Получаем предсказания для всех пользователей
-        print("\n[4/4] Анализ поведения пользователей...")
-        predictions = system.predict(X)
-        probabilities = system.predict_proba(X)
-        
-        # Оцениваем качество обнаружения
-        evaluate_detection(features, predictions, probabilities, loader, dataset)
-        
-        # Анализируем пользователей с высоким риском
-        print("\nПодробный анализ пользователей высокого риска...")
-        high_risk_mask = probabilities > ANOMALY_THRESHOLD  # Порог для определения аномалий
-        high_risk_users = features.loc[high_risk_mask, 'user_id']
-        high_risk_probs = probabilities[high_risk_mask]
-        
-        # Сортируем пользователей по убыванию вероятности
-        high_risk_sorted = sorted(zip(high_risk_users, high_risk_probs), key=lambda x: x[1], reverse=True)
-        
-        print(f"\nНайдено {len(high_risk_users)} пользователей с высоким риском (p > {ANOMALY_THRESHOLD})")
+        # Если это реальный инсайдер, показываем дополнительную информацию
+        insider_info = loader.insiders_data[loader.insiders_data['user'] == user]
+        if not insider_info.empty:
+            info = insider_info.iloc[0]
+            print("\n!!! ПОДТВЕРЖДЕННЫЙ ИНСАЙДЕР !!!")
+            print("-"*40)
+            print(f"Сценарий: {info['scenario']}")
+            print(f"Период активности: {info['start']} - {info['end']}")
         print("="*80)
-        
-        for idx, (user, prob) in enumerate(high_risk_sorted, 1):
-            if idx == 10:
-                break
-            print(f"\nАнализ пользователя {user} ({idx}/{len(high_risk_sorted)}):")
-            print("-"*80)
-            print(f"Вероятность аномального поведения: {prob:.3f}")
-            
-            # Если это реальный инсайдер, показываем дополнительную информацию
-            insider_info = loader.insiders_data[loader.insiders_data['user'] == user]
-            if not insider_info.empty:
-                info = insider_info.iloc[0]
-                print("\n!!! ПОДТВЕРЖДЕННЫЙ ИНСАЙДЕР !!!")
-                print("-"*40)
-                print(f"Сценарий: {info['scenario']}")
-                print(f"Период активности: {info['start']} - {info['end']}")
-            print("="*80)
     
     end_time = time.time()
     execution_time = end_time - start_time
