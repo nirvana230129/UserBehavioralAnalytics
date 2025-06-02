@@ -39,7 +39,7 @@ def create_anomaly_detection_system():
     ensemble = EnsembleDetector(detectors)
     return ensemble
 
-def plot_probability_distribution(probabilities, y_true, system, dataset):
+def plot_probability_distribution(probabilities, y_true, system, train_dataset, test_dataset):
     """Построение распределения вероятностей"""
     plt.figure(figsize=(12, 6))
     
@@ -83,14 +83,14 @@ def plot_probability_distribution(probabilities, y_true, system, dataset):
     plt.grid(True)
     
     # Создаем директорию для графиков если её нет
-    plot_dir = f'arch1/plots/{dataset}'
+    plot_dir = f'arch1/plots/{train_dataset}_{test_dataset}'
     os.makedirs(plot_dir, exist_ok=True)
     
     # Сохраняем график
     plt.savefig(f'{plot_dir}/probability_distribution.png')
     plt.close()
 
-def plot_pr_curve(y_true, probabilities, dataset):
+def plot_pr_curve(y_true, probabilities, train_dataset, test_dataset):
     """Построение PR-кривой"""
     plt.figure(figsize=(12, 8))
     
@@ -115,7 +115,7 @@ def plot_pr_curve(y_true, probabilities, dataset):
     plt.grid(True)
     
     # Создаем директорию для графиков если её нет
-    plot_dir = f'arch1/plots/{dataset}'
+    plot_dir = f'arch1/plots/{train_dataset}_{test_dataset}'
     os.makedirs(plot_dir, exist_ok=True)
     
     # Сохраняем график
@@ -123,7 +123,7 @@ def plot_pr_curve(y_true, probabilities, dataset):
     plt.close()    
     return pr_auc
 
-def evaluate_detection(features, predictions, probabilities, loader, dataset, system):
+def evaluate_detection(features, predictions, probabilities, loader, train_dataset, test_dataset, system):
     """Оценка качества обнаружения инсайдеров"""
     print("Оценка результатов детектирования...")
     separate(symbol='-')
@@ -161,9 +161,9 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset, sy
     
     # Строим графики и получаем метрики
     print("\nПостроение графиков...")
-    pr_auc = plot_pr_curve(y_true, probabilities, dataset)
-    plot_probability_distribution(probabilities, y_true, system, dataset)
-    print(f"Графики сохранены в директории 'arch1/plots/{dataset}'")
+    pr_auc = plot_pr_curve(y_true, probabilities, train_dataset, test_dataset)
+    plot_probability_distribution(probabilities, y_true, system, train_dataset, test_dataset)
+    print(f"Графики сохранены в директории 'arch1/plots/{train_dataset}_{test_dataset}'")
     separate(symbol='-')
     
     # Вычисляем Average Precision с инвертированными вероятностями
@@ -290,7 +290,7 @@ def test_system(loader, system):
     probabilities = system.predict_proba(X)
     
     # Оцениваем качество обнаружения
-    evaluate_detection(features, predictions, probabilities, loader, TEST_DATASET, system)
+    evaluate_detection(features, predictions, probabilities, loader, TRAIN_DATASET, TEST_DATASET, system)
 
 def main():
     start_time = time.time()
