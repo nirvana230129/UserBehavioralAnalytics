@@ -15,7 +15,8 @@ import time
 import matplotlib.pyplot as plt
 
 # Глобальные константы
-DATASET = 'r2'  # Используемый датасет (r1, r2, r3.1)
+TRAIN_DATASET = 'r1'  # Датасет для обучения (r1, r2, r3.1)
+TEST_DATASET = 'r2'   # Датасет для тестирования (r1, r2, r3.1)
 
 def separate(start='', symbol='=', end='\n', n=60):
     print(start + symbol * n, end=end)
@@ -254,37 +255,14 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset, sy
         print(f"Вероятность: {prob:.3f}")
         separate(symbol='-', n=40)
 
-def main():
-    start_time = time.time()
-    print("\n=== Запуск системы обнаружения инсайдеров ===")
-    
-    separate('\n')
-    print(f"Анализ датасета {DATASET}")
-    separate()
-    
-    # Загружаем данные
-    print(f"\n\n[1/4] Загрузка данных из датасета {DATASET}...")
-    separate(end='')
-    loader = DataLoader('dataset')
-    loader.load_data(DATASET)
-    separate()
-    
-    # Подготавливаем признаки
-    print("\n\n[2/4] Подготовка признаков...")
-    separate()
+def train_system(loader, system):
+    """Обучение системы детектирования на тренировочном датасете"""
+    print("\nПодготовка признаков для обучения...")
     features = loader.prepare_features()
     print(f"Извлечено {features.shape[1]} признаков для {features.shape[0]} пользователей")
-    separate()
-    
-    # Создаем и обучаем систему детектирования
-    print("\n\n[3/4] Создание и обучение системы детектирования...")
-    separate(end='')
-    system = create_anomaly_detection_system()
-    separate()
     
     # Создаем массив меток для обучения
     print("\nПодготовка меток классов для обучения...")
-    separate(symbol='-', end='')
     y_train = np.zeros(len(features))
     real_insiders = loader.insiders_data['user'].tolist()
     for idx, user in enumerate(features['user_id']):
@@ -295,22 +273,51 @@ def main():
     
     # Обучаем систему с метками
     print("\nОбучение моделей...")
-    separate(symbol='-', end='')
     system.fit(X := features.drop(['user_id'], axis=1), y=y_train)
-    separate(symbol='-')
+    
+    return system
 
+def test_system(loader, system):
+    """Тестирование системы детектирования на тестовом датасете"""
+    print("\nПодготовка признаков для тестирования...")
+    features = loader.prepare_features()
+    print(f"Извлечено {features.shape[1]} признаков для {features.shape[0]} пользователей")
+    
     # Получаем предсказания для всех пользователей
-    print("\n\n[4/4] Анализ поведения пользователей...")
-    separate()
+    print("\nАнализ поведения пользователей...")
+    X = features.drop(['user_id'], axis=1)
     predictions = system.predict(X)
     probabilities = system.predict_proba(X)
-
+    
     # Оцениваем качество обнаружения
-    evaluate_detection(features, predictions, probabilities, loader, DATASET, system)
+    evaluate_detection(features, predictions, probabilities, loader, TEST_DATASET, system)
+
+def main():
+    start_time = time.time()
+    print("\n=== Запуск системы обнаружения инсайдеров ===")
+    
+    # Создаем систему детектирования
+    print("\n[1/4] Создание системы детектирования...")
+    system = create_anomaly_detection_system()
+    
+    # Загружаем тренировочные данные
+    print(f"\n[2/4] Загрузка тренировочного датасета {TRAIN_DATASET}...")
+    loader = DataLoader('dataset')
+    loader.load_data(TRAIN_DATASET)
+    
+    # Обучаем систему
+    print("\n[3/4] Обучение системы...")
+    system = train_system(loader, system)
+    
+    # Загружаем тестовые данные и проводим тестирование
+    print(f"\n[4/4] Тестирование на датасете {TEST_DATASET}...")
+    loader = DataLoader('dataset')
+    loader.load_data(TEST_DATASET)
+    test_system(loader, system)
     
     end_time = time.time()
     execution_time = end_time - start_time
-    print(f"\n=== Анализ всех датасетов завершен за {execution_time:.2f} секунд ===")
+    print(f"\n=== Анализ завершен за {execution_time:.2f} секунд ===")
 
 if __name__ == '__main__':
     main() 
