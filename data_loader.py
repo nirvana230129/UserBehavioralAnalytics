@@ -4,6 +4,8 @@ import os
 from sklearn.preprocessing import StandardScaler
 import glob
 from tqdm import tqdm
+import hashlib
+from multiprocessing import Pool, cpu_count
 
 class DataLoader:
     def __init__(self, base_path):
@@ -25,6 +27,127 @@ class DataLoader:
         self.psychometric_data = None
         self.features = None
         self.insiders_data = None
+        self.cache_dir = 'cache'  # Директория для кэширования
+        os.makedirs(self.cache_dir, exist_ok=True)
+
+    def _get_data_hash(self):
+        """Вычисляет хэш для текущего набора данных"""
+        combined_hash = hashlib.md5()
+        for df in [self.logon_data, self.device_data, self.http_data, 
+                  self.email_data, self.file_data, self.psychometric_data, 
+                  self.ldap_data]:
+            if df is not None and not df.empty:
+                combined_hash.update(pd.util.hash_pandas_object(df).values.tobytes())
+        return combined_hash.hexdigest()
+
+    def _get_cache_path(self):
+        """Возвращает путь к файлу кэша для текущего датасета"""
+        data_hash = self._get_data_hash()
+        return os.path.join(self.cache_dir, f'features_{self.current_dataset}_{data_hash}.pkl')
+
+    def _load_cached_features(self):
+        """Загружает признаки из кэша"""
+        cache_path = self._get_cache_path()
+        try:
+            self.features = pd.read_pickle(cache_path)
+            return True
+        except:
+            return False
+
+    def _save_features_cache(self):
+        """Сохраняет признаки в кэш"""
+        if self.features is not None:
+            cache_path = self._get_cache_path()
+            try:
+                self.features.to_pickle(cache_path)
+            except Exception as e:
+                print(f"Ошибка при сохранении кэша: {e}")
+
+    def _process_user(self, user):
+        """Обработка одного пользователя"""
+        # Фильтруем данные пользователя
+        user_logons = self.logon_data[self.logon_data['user'] == user]
+        user_devices = self.device_data[self.device_data['user'] == user]
+        user_http = self.http_data[self.http_data['user'] == user] if 'user' in self.http_data.columns else pd.DataFrame()
+        user_emails = self.email_data[
+            (self.email_data['from'] == user) | 
+            (self.email_data['to'].str.contains(user, na=False))
+        ] if not self.email_data.empty else pd.DataFrame()
+        
+        # Базовые характеристики
+        total_days = (user_logons['date'].max() - user_logons['date'].min()).days + 1
+        if total_days == 0:  # Если все события в один день
+            total_days = 1
+        
+        # Характеристики входов
+        logon_features = {
+            'avg_logons_per_day': len(user_logons) / total_days,
+            'weekend_logon_ratio': user_logons[user_logons['date'].apply(self.is_weekend)].shape[0] / len(user_logons) if len(user_logons) > 0 else 0,
+            'after_hours_logon_ratio': user_logons[user_logons['date'].apply(self.is_after_hours)].shape[0] / len(user_logons) if len(user_logons) > 0 else 0,
+            'unique_pcs': user_logons['pc'].nunique(),
+        }
+        
+        # Характеристики устройств
+        device_features = {
+            'avg_device_usage_per_day': len(user_devices) / total_days,
+            'device_usage_ratio': len(user_devices[user_devices['activity'] == 'Connect']) / total_days if total_days > 0 else 0,
+        }
+        
+        # HTTP характеристики
+        http_features = {
+            'avg_http_requests_per_day': len(user_http) / total_days if not user_http.empty else 0,
+            'unique_domains': user_http['url'].apply(lambda x: x.split('/')[0]).nunique() if not user_http.empty and 'url' in user_http.columns else 0,
+        }
+        
+        # Email характеристики
+        email_features = {
+            'avg_emails_sent_per_day': len(user_emails[user_emails['from'] == user]) / total_days if not user_emails.empty else 0,
+            'avg_emails_received_per_day': len(user_emails[user_emails['to'].str.contains(user, na=False)]) / total_days if not user_emails.empty else 0,
+            'unique_email_contacts': pd.concat([
+                user_emails['to'].str.split(';').explode(),
+                user_emails['from']
+            ]).nunique() if not user_emails.empty else 0,
+        }
+        
+        # Дополнительные характеристики для r3.1
+        if self.current_dataset == 'r3.1' and not self.file_data.empty:
+            user_files = self.file_data[self.file_data['user'] == user]
+            file_features = {
+                'avg_file_copies_per_day': len(user_files) / total_days,
+                'unique_file_types': user_files['filename'].apply(lambda x: x.split('.')[-1] if '.' in x else '').nunique(),
+            }
+        else:
+            file_features = {
+                'avg_file_copies_per_day': 0,
+                'unique_file_types': 0,
+            }
+        
+        # Психометрические характеристики
+        user_psycho = self.psychometric_data[self.psychometric_data['user_id'] == user]
+        if not user_psycho.empty:
+            psycho_features = user_psycho.iloc[0][['O', 'C', 'E', 'A', 'N']].to_dict()
+        else:
+            psycho_features = {
+                'O': 0, 'C': 0, 'E': 0, 'A': 0, 'N': 0
+            }
+        
+        # LDAP характеристики
+        user_ldap = self.ldap_data[self.ldap_data['user_id'] == user]
+        ldap_features = {
+            'is_admin': 1 if not user_ldap.empty and user_ldap.iloc[-1]['role'] == 'ITAdmin' else 0,
+        }
+        
+        # Объединяем все характеристики
+        return {
+            'user_id': user,
+            **logon_features,
+            **device_features,
+            **http_features,
+            **email_features,
+            **file_features,
+            **psycho_features,
+            **ldap_features,
+        }
 
     def load_insiders_info(self):
         """Загрузка информации об инсайдерах"""
@@ -184,24 +307,73 @@ class DataLoader:
         
     def prepare_features(self):
         """Подготовка признаков для обучения"""
-        features = []
+        # Проверяем наличие кэша
+        if self._load_cached_features():
+            print("Загружены кэшированные признаки")
+            return self.features
+
+        print("Кэш не найден, выполняется извлечение признаков...")
         
         # Получаем список всех пользователей
         users = pd.unique(self.logon_data['user'])
+        features = []
         
-        for user in tqdm(users):
-            # Фильтруем данные пользователя
-            user_logons = self.logon_data[self.logon_data['user'] == user]
-            user_devices = self.device_data[self.device_data['user'] == user]
-            user_http = self.http_data[self.http_data['user'] == user] if 'user' in self.http_data.columns else pd.DataFrame()
-            user_emails = self.email_data[
-                (self.email_data['from'] == user) | 
-                (self.email_data['to'].str.contains(user, na=False))
-            ] if not self.email_data.empty else pd.DataFrame()
+        print("Предварительная подготовка данных...")
+        
+        # Оптимизируем фильтрацию с помощью groupby
+        print("\tГруппировка логов входа...")
+        user_logons_dict = dict(tuple(self.logon_data.groupby('user')))
+        
+        print("\tГруппировка данных устройств...")
+        user_devices_dict = dict(tuple(self.device_data.groupby('user')))
+        
+        print("\tГруппировка HTTP данных...")
+        if 'user' in self.http_data.columns:
+            user_http_dict = dict(tuple(self.http_data.groupby('user')))
+        else:
+            user_http_dict = {user: pd.DataFrame() for user in users}
+        
+        print("\tПодготовка email данных...")
+        user_emails_dict = {}
+        if not self.email_data.empty:
+            for user in tqdm(users, desc="\tОбработка email для пользователей"):
+                user_emails = self.email_data[
+                    (self.email_data['from'] == user) | 
+                    (self.email_data['to'].str.contains(user, na=False))
+                ]
+                user_emails_dict[user] = user_emails
+        else:
+            user_emails_dict = {user: pd.DataFrame() for user in users}
+        
+        print("\tГруппировка файловых данных...")
+        if self.current_dataset == 'r3.1' and not self.file_data.empty:
+            user_files_dict = dict(tuple(self.file_data.groupby('user')))
+        else:
+            user_files_dict = {user: pd.DataFrame() for user in users}
+        
+        print("\tГруппировка психометрических данных...")
+        user_psycho_dict = dict(tuple(self.psychometric_data.groupby('user_id')))
+        
+        print("\tГруппировка LDAP данных...")
+        user_ldap_dict = dict(tuple(self.ldap_data.groupby('user_id')))
+        
+        print("\nОбработка пользователей...")
+        for user in tqdm(users, desc="Извлечение признаков"):
+            # Получаем предварительно отфильтрованные данные
+            user_logons = user_logons_dict.get(user, pd.DataFrame())
+            user_devices = user_devices_dict.get(user, pd.DataFrame())
+            user_http = user_http_dict.get(user, pd.DataFrame())
+            user_emails = user_emails_dict.get(user, pd.DataFrame())
+            user_files = user_files_dict.get(user, pd.DataFrame())
+            user_psycho = user_psycho_dict.get(user, pd.DataFrame())
+            user_ldap = user_ldap_dict.get(user, pd.DataFrame())
             
             # Базовые характеристики
-            total_days = (user_logons['date'].max() - user_logons['date'].min()).days + 1
-            if total_days == 0:  # Если все события в один день
+            if len(user_logons) > 0:
+                total_days = (user_logons['date'].max() - user_logons['date'].min()).days + 1
+                if total_days == 0:  # Если все события в один день
+                    total_days = 1
+            else:
                 total_days = 1
             
             # Характеристики входов
@@ -209,13 +381,13 @@ class DataLoader:
                 'avg_logons_per_day': len(user_logons) / total_days,
                 'weekend_logon_ratio': user_logons[user_logons['date'].apply(self.is_weekend)].shape[0] / len(user_logons) if len(user_logons) > 0 else 0,
                 'after_hours_logon_ratio': user_logons[user_logons['date'].apply(self.is_after_hours)].shape[0] / len(user_logons) if len(user_logons) > 0 else 0,
-                'unique_pcs': user_logons['pc'].nunique(),
+                'unique_pcs': user_logons['pc'].nunique() if len(user_logons) > 0 else 0,
             }
             
             # Характеристики устройств
             device_features = {
                 'avg_device_usage_per_day': len(user_devices) / total_days,
-                'device_usage_ratio': len(user_devices[user_devices['activity'] == 'Connect']) / total_days if total_days > 0 else 0,
+                'device_usage_ratio': len(user_devices[user_devices['activity'] == 'Connect']) / total_days if len(user_devices) > 0 else 0,
             }
             
             # HTTP характеристики
@@ -234,9 +406,8 @@ class DataLoader:
                 ]).nunique() if not user_emails.empty else 0,
             }
             
-            # Дополнительные характеристики для r3.1
-            if self.current_dataset == 'r3.1' and not self.file_data.empty:
-                user_files = self.file_data[self.file_data['user'] == user]
+            # Файловые характеристики
+            if self.current_dataset == 'r3.1' and not user_files.empty:
                 file_features = {
                     'avg_file_copies_per_day': len(user_files) / total_days,
                     'unique_file_types': user_files['filename'].apply(lambda x: x.split('.')[-1] if '.' in x else '').nunique(),
@@ -248,7 +419,6 @@ class DataLoader:
                 }
             
             # Психометрические характеристики
-            user_psycho = self.psychometric_data[self.psychometric_data['user_id'] == user]
             if not user_psycho.empty:
                 psycho_features = user_psycho.iloc[0][['O', 'C', 'E', 'A', 'N']].to_dict()
             else:
@@ -257,7 +427,6 @@ class DataLoader:
                 }
             
             # LDAP характеристики
-            user_ldap = self.ldap_data[self.ldap_data['user_id'] == user]
             ldap_features = {
                 'is_admin': 1 if not user_ldap.empty and user_ldap.iloc[-1]['role'] == 'ITAdmin' else 0,
             }
@@ -276,6 +445,7 @@ class DataLoader:
             
             features.append(user_features)
         
+        print("\nСоздание и нормализация DataFrame...")
         # Создаем DataFrame
         self.features = pd.DataFrame(features)
         
@@ -286,6 +456,10 @@ class DataLoader:
         if not numeric_columns.empty:
             scaler = StandardScaler()
             self.features[numeric_columns] = scaler.fit_transform(self.features[numeric_columns])
+        
+        # Сохраняем в кэш
+        print("Сохранение результатов в кэш...")
+        self._save_features_cache()
         
         return self.features
         

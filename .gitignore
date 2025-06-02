@@ -1,5 +1,12 @@
 .*
-*.pages
-dataset/
 __pycache__/
-arch1/plots/
+*.pages
+*.png
+
+dataset/*
+!dataset/
+
+cache/*
+!cache/
+
+tmp.py
