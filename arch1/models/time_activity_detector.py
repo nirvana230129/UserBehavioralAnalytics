@@ -1,6 +1,5 @@
 import numpy as np
 from sklearn.ensemble import IsolationForest
-from datetime import datetime
 from .base_model import AnomalyDetector
 
 class TimeActivityDetector(AnomalyDetector):

@@ -1,5 +1,4 @@
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
 from .base_model import AnomalyDetector
 
 class EnsembleDetector(AnomalyDetector):

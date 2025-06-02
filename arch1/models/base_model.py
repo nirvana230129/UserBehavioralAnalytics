@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-import numpy as np
 from sklearn.base import BaseEstimator
 
 class AnomalyDetector(BaseEstimator, ABC):
