@@ -13,10 +13,13 @@ from sklearn.metrics import precision_score, recall_score, f1_score, precision_r
 from tqdm import tqdm
 import time
 import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
 
 # Глобальные константы
 ANOMALY_THRESHOLD = 0.806  # Пороговое значение вероятности для определения аномального поведения
+DATASET = 'r2'  # Используемый датасет (r1, r2, r3.1)
+
+def separate(start='', symbol='=', end='\n', n=60):
+    print(start + symbol * n, end=end)
 
 def create_anomaly_detection_system():
     """Создание системы детектирования аномалий"""
@@ -46,7 +49,7 @@ def create_anomaly_detection_system():
     ensemble = EnsembleDetector(detectors, weights, threshold=ANOMALY_THRESHOLD)
     return ensemble
 
-def plot_probability_distribution(probabilities, y_true):
+def plot_probability_distribution(probabilities, y_true, dataset):
     """Построение распределения вероятностей"""
     plt.figure(figsize=(12, 6))
     
@@ -76,13 +79,49 @@ def plot_probability_distribution(probabilities, y_true):
     plt.legend()
     plt.grid(True)
     
+    # Создаем директорию для графиков если её нет
+    plot_dir = f'arch1/plots/{dataset}'
+    os.makedirs(plot_dir, exist_ok=True)
+    
     # Сохраняем график
-    plt.savefig('arch1/plots/probability_distribution.png')
+    plt.savefig(f'{plot_dir}/probability_distribution.png')
     plt.close()
+
+def plot_pr_curve(y_true, probabilities, dataset):
+    """Построение PR-кривой"""
+    plt.figure(figsize=(12, 8))
+    
+    # Вычисляем precision и recall
+    precision, recall, _ = precision_recall_curve(y_true, probabilities, pos_label=0)
+    
+    # Вычисляем PR-AUC
+    pr_auc = auc(recall, precision)
+    
+    # Строим кривую
+    plt.plot(recall, precision, 
+            label=f'PR-AUC = {pr_auc:.3f}',
+            linestyle='-',
+            linewidth=2)
+        
+    plt.xlabel('Полнота (Recall)')
+    plt.ylabel('Точность (Precision)')
+    plt.title('Кривая Precision-Recall')
+    plt.legend(loc='best')
+    plt.grid(True)
+    
+    # Создаем директорию для графиков если её нет
+    plot_dir = f'arch1/plots/{dataset}'
+    os.makedirs(plot_dir, exist_ok=True)
+    
+    # Сохраняем график
+    plt.savefig(f'{plot_dir}/pr_curve.png')
+    plt.close()    
+    return pr_auc
 
 def evaluate_detection(features, predictions, probabilities, loader, dataset):
     """Оценка качества обнаружения инсайдеров"""
-    print("\nОценка результатов детектирования...")
+    print("Оценка результатов детектирования...")
+    separate(symbol='-')
     
     print("Получение списка реальных инсайдеров...")
     # Получаем список реальных инсайдеров для текущего датасета
@@ -107,12 +146,13 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
     
     # Строим графики и получаем метрики
     print("\nПостроение графиков...")
-    pr_auc = plot_pr_curve(y_true, probabilities)
-    plot_probability_distribution(probabilities, y_true)
-    print("Графики сохранены в файлы 'arch1/plots/pr_curve.png' и 'arch1/plots/probability_distribution.png'")
+    pr_auc = plot_pr_curve(y_true, probabilities, dataset)
+    plot_probability_distribution(probabilities, y_true, dataset)
+    print(f"Графики сохранены в директории 'arch1/plots/{dataset}'")
+    separate(symbol='-')
     
     # Вычисляем Average Precision с инвертированными вероятностями
-    ap_score = average_precision_score(y_true, 1 - probabilities, average='weighted')
+    ap_score = average_precision_score(y_true, probabilities, average='weighted', pos_label=0)
     
     # Вычисляем weighted метрики для учета несбалансированности
     precision = precision_score(y_true, y_pred, zero_division=0, average='weighted')
@@ -120,24 +160,24 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
     f1 = f1_score(y_true, y_pred, zero_division=0, average='weighted')
     
     print("\nМетрики качества обнаружения:")
-    print("-"*50)
-    print("Метрики для несбалансированных классов:")
+    separate(symbol='-')
     print(f"PR-AUC score: {pr_auc:.3f}")
     print(f"Average Precision score: {ap_score:.3f}")
-    
-    print(f"\nМетрики на пороге {ANOMALY_THRESHOLD}:")
     print(f"Weighted Precision: {precision:.3f}")
     print(f"Weighted Recall: {recall:.3f}")
     print(f"Weighted F1-score: {f1:.3f}")
+    separate(symbol='-')
     
     # Дополнительная информация о балансе классов
     n_total = len(y_true)
     n_insiders = sum(y_true)
     print("\nИнформация о балансе классов:")
+    separate(symbol='-')
     print(f"Всего пользователей: {n_total}")
     print(f"Инсайдеров: {n_insiders} ({(n_insiders/n_total)*100:.2f}%)")
     print(f"Обычных пользователей: {n_total - n_insiders} ({((n_total-n_insiders)/n_total)*100:.2f}%)")
-    
+    separate(symbol='-')
+
     # Анализ результатов
     print("\nАнализ результатов обнаружения...")
     detected_insiders = []
@@ -157,13 +197,13 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
     
     # Вывод результатов
     print("\nРезультаты анализа:")
-    print("="*50)
+    separate(symbol='-')
     print(f"Всего пользователей проанализировано: {len(features)}")
     print(f"Обнаружено потенциальных аномалий: {len(detected_insiders) + len(false_positives)}")
     print(f"Правильно обнаружено инсайдеров: {len(detected_insiders)}")
     print(f"Ложных срабатываний: {len(false_positives)}")
     print(f"Пропущено инсайдеров: {len(missed_insiders)}")
-    print("="*50)
+    separate()
     
     # Создаем отсортированный список всех пользователей по вероятности
     all_users_sorted = sorted(zip(features['user_id'], probabilities), key=lambda x: x[1], reverse=True)
@@ -171,7 +211,7 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
     
     if detected_insiders:
         print("\nОбнаруженные инсайдеры:")
-        print("-"*50)
+        separate(symbol='-')
         for user, prob in detected_insiders:
             insider_info = loader.insiders_data[loader.insiders_data['user'] == user].iloc[0]
             print(f"Пользователь: {user}")
@@ -179,11 +219,11 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
             print(f"Позиция в рейтинге: {user_rankings[user]} из {len(all_users_sorted)}")
             print(f"Сценарий: {insider_info['scenario']}")
             print(f"Период активности: {insider_info['start']} - {insider_info['end']}")
-            print("-"*50)
+            separate(symbol='-')
     
     if missed_insiders:
         print("\nПропущенные инсайдеры:")
-        print("-"*50)
+        separate(symbol='-')
         for user, prob in missed_insiders:
             print(f"Пользователь: {user}")
             print(f"Вероятность: {prob:.3f}")
@@ -191,19 +231,19 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset):
             insider_info = loader.insiders_data[loader.insiders_data['user'] == user].iloc[0]
             print(f"Сценарий: {insider_info['scenario']}")
             print(f"Период активности: {insider_info['start']} - {insider_info['end']}")
-            print("-"*50)
+            separate(symbol='-')
     
     print("\nЛожные срабатывания (топ-5 по вероятности):")
-    print("-"*50)
+    separate()
     for user, prob in sorted(false_positives, key=lambda x: x[1], reverse=True)[:5]:
         print(f"Пользователь: {user}")
         print(f"Вероятность: {prob:.3f}")
-        print("-"*50)
+        separate(symbol='-', n=40)
 
 def analyze_insider_predictions(features, system, real_insiders):
     """Анализ предсказаний детекторов для инсайдера"""
     print("\nАнализ предсказаний детекторов для инсайдера:")
-    print("="*80)
+    separate(symbol='-')
     
     # Получаем индексы инсайдеров
     insider_indices = features[features['user_id'].isin(real_insiders)].index
@@ -219,7 +259,7 @@ def analyze_insider_predictions(features, system, real_insiders):
     for idx in insider_indices:
         user_id = features.iloc[idx]['user_id']
         print(f"\nИнсайдер: {user_id}")
-        print("-"*40)
+        separate(symbol='-', n=40)
         
         try:
             # Получаем предсказания всех детекторов
@@ -243,94 +283,71 @@ def analyze_insider_predictions(features, system, real_insiders):
                     print(f"  Исходная вероятность: {raw_pred:.3f}")
                     print(f"  Вес детектора: {weight:.1f}")
                     print(f"  Взвешенная вероятность: {weighted_pred:.3f}")
-                    print("-"*40)
+                    separate(symbol='-', n=40)
                     
                     total_weighted_prob += weighted_pred
                     total_weight += weight
                 except Exception as e:
                     print(f"Ошибка при обработке детектора {name}: {e}")
-                    print("-"*40)
+                    separate(symbol='-', n=40)
             
             # Вычисляем итоговую вероятность как среднее взвешенное
             final_prob = total_weighted_prob / total_weight if total_weight > 0 else 0
             print(f"Итоговая вероятность: {final_prob:.3f}")
             print(f"Пороговое значение: {ANOMALY_THRESHOLD:.3f}")
-            print("="*80)
+            separate(symbol='-')
             
         except Exception as e:
             print(f"Ошибка при анализе инсайдера {user_id}: {e}")
-            print("="*80)
+            separate(symbol='-')
 
 def main():
     start_time = time.time()
     print("\n=== Запуск системы обнаружения инсайдеров ===")
     
-    # Анализируемый датасет
-    dataset = 'r2'  # r1, r2, r3.1
-    
-    # for dataset in datasets:
-    print(f"\n{'='*50}")
-    print(f"Анализ датасета {dataset}")
-    print(f"{'='*50}")
+    separate('\n')
+    print(f"Анализ датасета {DATASET}")
+    separate()
     
     # Загружаем данные
-    print(f"\n[1/4] Загрузка данных из датасета {dataset}...")
+    print(f"\n\n[1/4] Загрузка данных из датасета {DATASET}...")
+    separate(end='')
     loader = DataLoader('dataset')
-    loader.load_data(dataset)
+    loader.load_data(DATASET)
+    separate()
     
     # Подготавливаем признаки
-    print("\n[2/4] Подготовка признаков...")
+    print("\n\n[2/4] Подготовка признаков...")
+    separate()
     features = loader.prepare_features()
     print(f"Извлечено {features.shape[1]} признаков для {features.shape[0]} пользователей")
+    separate()
     
     # Создаем и обучаем систему детектирования
-    print("\n[3/4] Создание и обучение системы детектирования...")
+    print("\n\n[3/4] Создание и обучение системы детектирования...")
+    separate(end='')
     system = create_anomaly_detection_system()
+    separate()
     
     # Обучаем систему
     print("\nОбучение моделей...")
+    separate(symbol='-', end='')
     system.fit(X := features.drop(['user_id'], axis=1))
-    
+    separate(symbol='-')
+
     # Анализируем предсказания для инсайдера
     real_insiders = loader.insiders_data['user'].tolist()
     analyze_insider_predictions(features, system, real_insiders)
-    
+    separate()
+
     # Получаем предсказания для всех пользователей
-    print("\n[4/4] Анализ поведения пользователей...")
+    print("\n\n[4/4] Анализ поведения пользователей...")
+    separate()
     predictions = system.predict(X)
     probabilities = system.predict_proba(X)
-    
+
     # Оцениваем качество обнаружения
-    evaluate_detection(features, predictions, probabilities, loader, dataset)
-    
-    # Анализируем пользователей с высоким риском
-    print("\nПодробный анализ пользователей высокого риска...")
-    high_risk_mask = probabilities > ANOMALY_THRESHOLD  # Порог для определения аномалий
-    high_risk_users = features.loc[high_risk_mask, 'user_id']
-    high_risk_probs = probabilities[high_risk_mask]
-    
-    # Сортируем пользователей по убыванию вероятности
-    high_risk_sorted = sorted(zip(high_risk_users, high_risk_probs), key=lambda x: x[1], reverse=True)
-    
-    print(f"\nНайдено {len(high_risk_users)} пользователей с высоким риском (p > {ANOMALY_THRESHOLD})")
-    print("="*80)
-    
-    for idx, (user, prob) in enumerate(high_risk_sorted, 1):
-        if idx == 10:
-            break
-        print(f"\nАнализ пользователя {user} ({idx}/{len(high_risk_sorted)}):")
-        print("-"*80)
-        print(f"Вероятность аномального поведения: {prob:.3f}")
-        
-        # Если это реальный инсайдер, показываем дополнительную информацию
-        insider_info = loader.insiders_data[loader.insiders_data['user'] == user]
-        if not insider_info.empty:
-            info = insider_info.iloc[0]
-            print("\n!!! ПОДТВЕРЖДЕННЫЙ ИНСАЙДЕР !!!")
-            print("-"*40)
-            print(f"Сценарий: {info['scenario']}")
-            print(f"Период активности: {info['start']} - {info['end']}")
-        print("="*80)
+    evaluate_detection(features, predictions, probabilities, loader, DATASET)
     
     end_time = time.time()
     execution_time = end_time - start_time
