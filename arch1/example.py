@@ -43,7 +43,7 @@ def plot_probability_distribution(probabilities, y_true, system, dataset):
     plt.figure(figsize=(12, 6))
     
     # Разделяем вероятности на два класса
-    normal_probs = probabilities[y_true == 0]
+    normal_probs = probabilities[y_true == -1]
     insider_probs = probabilities[y_true == 1]
     
     # Определяем количество бинов в зависимости от разброса данных
@@ -93,8 +93,8 @@ def plot_pr_curve(y_true, probabilities, dataset):
     """Построение PR-кривой"""
     plt.figure(figsize=(12, 8))
     
-    # Вычисляем precision и recall
-    precision, recall, _ = precision_recall_curve(y_true, probabilities, pos_label=0)
+    # Вычисляем precision и recall для класса инсайдеров (1)
+    precision, recall, _ = precision_recall_curve(y_true, probabilities, pos_label=1)
     
     # Вычисляем PR-AUC
     pr_auc = auc(recall, precision)
@@ -136,7 +136,7 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset, sy
     
     print("\nПодготовка массива истинных меток...")
     # Создаем массив истинных меток
-    y_true = np.zeros(len(features))
+    y_true = np.full(len(features), -1)
     for idx, user in tqdm(enumerate(features['user_id']), 
                          desc="Разметка пользователей", 
                          total=len(features)):
@@ -157,7 +157,7 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset, sy
         for name, weight in detector_weights.items():
             print(f"{name}: {weight:.3f}")
     separate(symbol='-')
-            
+    
     # Строим графики и получаем метрики
     print("\nПостроение графиков...")
     pr_auc = plot_pr_curve(y_true, probabilities, dataset)
@@ -166,7 +166,7 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset, sy
     separate(symbol='-')
     
     # Вычисляем Average Precision с инвертированными вероятностями
-    ap_score = average_precision_score(y_true, probabilities, average='weighted', pos_label=0)
+    ap_score = average_precision_score(y_true, probabilities, average='weighted', pos_label=-1)
     
     # Вычисляем weighted метрики для учета несбалансированности
     precision = precision_score(y_true, predictions, zero_division=0, average='weighted')
@@ -184,7 +184,7 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset, sy
     
     # Дополнительная информация о балансе классов
     n_total = len(y_true)
-    n_insiders = sum(y_true)
+    n_insiders = np.count_nonzero(y_true == 1)
     print("\nИнформация о балансе классов:")
     separate(symbol='-')
     print(f"Всего пользователей: {n_total}")
@@ -254,24 +254,6 @@ def evaluate_detection(features, predictions, probabilities, loader, dataset, sy
         print(f"Вероятность: {prob:.3f}")
         separate(symbol='-', n=40)
 
-def analyze_insider_predictions(features, system, real_insiders):
-    """Анализ предсказаний детекторов для инсайдера"""
-    print("\nАнализ предсказаний детекторов для инсайдера:")
-    separate(symbol='-')
-    
-    # Получаем индексы инсайдеров
-    insider_indices = features[features['user_id'].isin(real_insiders)].index
-    
-    if len(insider_indices) == 0:
-        print("Инсайдеры не найдены в данных")
-        return
-    
-    # Для каждого инсайдера
-    for idx in insider_indices:
-        user_id = features.iloc[idx]['user_id']
-        print(f"\nИнсайдер: {user_id}")
-        separate(symbol='-', n=40)
-
 def main():
     start_time = time.time()
     print("\n=== Запуск системы обнаружения инсайдеров ===")
@@ -316,10 +298,6 @@ def main():
     separate(symbol='-', end='')
     system.fit(X := features.drop(['user_id'], axis=1), y=y_train)
     separate(symbol='-')
-
-    # Анализируем предсказания для инсайдера
-    analyze_insider_predictions(features, system, real_insiders)
-    separate()
 
     # Получаем предсказания для всех пользователей
     print("\n\n[4/4] Анализ поведения пользователей...")
