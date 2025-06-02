@@ -33,6 +33,30 @@ class ResourceAccessDetector(AnomalyDetector):
         return self.model.predict(features)
         
     def predict_proba(self, X):
+        """
+        Вероятности аномалий
+        
+        Parameters:
+        -----------
+        X : pandas.DataFrame или numpy.ndarray
+            Данные для предсказания
+            
+        Returns:
+        --------
+        numpy.ndarray
+            Массив вероятностей аномальности в диапазоне [0, 1]
+        """
         features = self._prepare_features(X)
-        scores = -self.model.score_samples(features)
-        return scores / np.max(scores) if len(scores) > 0 else scores 
+        scores = -self.model.score_samples(features)  # Получаем сырые оценки
+        
+        if len(scores) > 0:
+            # Проверяем, есть ли разброс в оценках
+            score_range = scores.max() - scores.min()
+            if score_range > 0:
+                # Если есть разброс, нормализуем
+                scores_norm = (scores - scores.min()) / score_range
+            else:
+                # Если все оценки одинаковые, считаем их нормальными
+                scores_norm = np.zeros_like(scores)
+            return np.clip(scores_norm, 0, 1)  # Обрезаем на всякий случай
+        return scores 
