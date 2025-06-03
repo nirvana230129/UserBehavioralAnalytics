@@ -4,7 +4,6 @@ import os
 from sklearn.preprocessing import StandardScaler
 import glob
 from tqdm import tqdm
-import hashlib
 from multiprocessing import Pool, cpu_count
 
 class DataLoader:
@@ -30,29 +29,21 @@ class DataLoader:
         self.cache_dir = 'cache'  # Директория для кэширования
         os.makedirs(self.cache_dir, exist_ok=True)
 
-    def _get_data_hash(self):
-        """Вычисляет хэш для текущего набора данных"""
-        combined_hash = hashlib.md5()
-        for df in [self.logon_data, self.device_data, self.http_data, 
-                  self.email_data, self.file_data, self.psychometric_data, 
-                  self.ldap_data]:
-            if df is not None and not df.empty:
-                combined_hash.update(pd.util.hash_pandas_object(df).values.tobytes())
-        return combined_hash.hexdigest()
-
     def _get_cache_path(self):
         """Возвращает путь к файлу кэша для текущего датасета"""
-        data_hash = self._get_data_hash()
-        return os.path.join(self.cache_dir, f'features_{self.current_dataset}_{data_hash}.pkl')
+        return os.path.join(self.cache_dir, f'features_{self.current_dataset}.pkl')
 
     def _load_cached_features(self):
         """Загружает признаки из кэша"""
-        cache_path = self._get_cache_path()
         try:
-            self.features = pd.read_pickle(cache_path)
-            return True
-        except:
-            return False
+            cache_path = self._get_cache_path()
+            if os.path.exists(cache_path):
+                self.features = pd.read_pickle(cache_path)
+                print(f"Загружены кэшированные признаки для датасета {self.current_dataset}")
+                return True
+        except Exception as e:
+            print(f"Не удалось загрузить кэш: {e}")
+        return False
 
     def _save_features_cache(self):
         """Сохраняет признаки в кэш"""
@@ -60,6 +51,7 @@ class DataLoader:
             cache_path = self._get_cache_path()
             try:
                 self.features.to_pickle(cache_path)
+                print(f"Признаки сохранены в кэш: {cache_path}")
             except Exception as e:
                 print(f"Ошибка при сохранении кэша: {e}")
 
@@ -152,12 +144,40 @@ class DataLoader:
     def load_insiders_info(self):
         """Загрузка информации об инсайдерах"""
         try:
-            insiders_data = pd.read_csv('dataset/answers/insiders.csv')
-            # Фильтруем только по текущему датасету (r1, r2, r3.1 и т.д.)
-            self.insiders_data = insiders_data[insiders_data['dataset'] == float(self.current_dataset.replace('r', ''))]
-            print(f"\nЗагружена информация об инсайдерах для датасета {self.current_dataset}:")
-            print(self.insiders_data)
+            # Проверяем существование файла
+            insiders_path = 'dataset/answers/insiders.csv'
+            if not os.path.exists(insiders_path):
+                print(f"Файл с информацией об инсайдерах не найден: {insiders_path}")
+                self.insiders_data = pd.DataFrame(columns=['dataset', 'scenario', 'user', 'start', 'end'])
+                return self.insiders_data
+
+            # Загружаем данные
+            insiders_data = pd.read_csv(insiders_path)
+            
+            # Проверяем наличие необходимых столбцов
+            required_columns = ['dataset', 'scenario', 'user', 'start', 'end']
+            if not all(col in insiders_data.columns for col in required_columns):
+                print("В файле insiders.csv отсутствуют необходимые столбцы")
+                self.insiders_data = pd.DataFrame(columns=required_columns)
+                return self.insiders_data
+            
+            # Фильтруем только по текущему датасету
+            try:
+                dataset_num = float(self.current_dataset.replace('r', ''))
+                self.insiders_data = insiders_data[insiders_data['dataset'] == dataset_num].copy()
+            except (ValueError, AttributeError) as e:
+                print(f"Ошибка при фильтрации данных по датасету: {e}")
+                self.insiders_data = pd.DataFrame(columns=required_columns)
+                return self.insiders_data
+            
+            if not self.insiders_data.empty:
+                print(f"\nЗагружена информация об инсайдерах для датасета {self.current_dataset}:")
+                print(self.insiders_data)
+            else:
+                print(f"\nНет информации об инсайдерах для датасета {self.current_dataset}")
+            
             return self.insiders_data
+            
         except Exception as e:
             print(f"Ошибка при загрузке информации об инсайдерах: {e}")
             self.insiders_data = pd.DataFrame(columns=['dataset', 'scenario', 'user', 'start', 'end'])
@@ -169,10 +189,18 @@ class DataLoader:
             raise ValueError(f"Dataset {dataset} not supported. Available datasets: {self.datasets}")
             
         self.current_dataset = dataset
-        dataset_path = os.path.join(self.base_path, dataset)
         
-        # Загрузка информации об инсайдерах
+        # Загрузка информации об инсайдерах (делаем это в любом случае)
         self.load_insiders_info()
+        
+        # Пробуем загрузить кэшированные признаки
+        if self._load_cached_features():
+            print("Загружены кэшированные признаки")
+            return self.features
+            
+        # Если кэш не найден, загружаем данные из CSV
+        print(f"Кэш не найден. Загрузка данных из {dataset}...")
+        dataset_path = os.path.join(self.base_path, dataset)
         
         # Загрузка основных данных
         print(f"Loading data from {dataset}...")
