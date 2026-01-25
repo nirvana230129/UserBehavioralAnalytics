@@ -10,3 +10,5 @@ cache/*
 !cache/
 
 tmp.py
+
+*.pdf
