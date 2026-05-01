@@ -26,7 +26,7 @@ class EnsembleDetector(AnomalyDetector):
         # Калиброванная мета-модель
         self.meta_model = None
         self.scaler = StandardScaler()
-        self.threshold = 0.5  # Значение по умолчанию
+        self.threshold = 0.75  # Значение по умолчанию
         
     def get_detector_weights(self):
         """
@@ -121,7 +121,7 @@ class EnsembleDetector(AnomalyDetector):
                 self.base_meta_model.fit(meta_features, y_binary)
                 self.meta_model = self.base_meta_model
                 # Устанавливаем консервативный порог для редких событий
-                self.threshold = 0.7 if min_samples > 0 else 0.9
+                # self.threshold = 0.7 if min_samples > 0 else 0.9
             else:
                 # Обучаем базовую мета-модель
                 self.base_meta_model.fit(meta_features, y_binary)
@@ -150,7 +150,7 @@ class EnsembleDetector(AnomalyDetector):
                     self.meta_model = self.base_meta_model
                 
                 # Устанавливаем порог
-                self.threshold = 0.7
+                # self.threshold = 0.7
         return self
         
     def predict_proba(self, X):

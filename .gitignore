@@ -2,6 +2,7 @@
 __pycache__/
 *.pages
 *.png
+*.pdf
 
 dataset/*
 !dataset/
@@ -9,6 +10,6 @@ dataset/*
 cache/*
 !cache/
 
-tmp.py
+instructions/
 
-*.pdf
+tmp.py
