@@ -89,10 +89,9 @@ def page_overview(train_ds, test_ds, use_lstm):
     insider_p = y_proba[y_true == 1]
     if len(normal_p) > 0:
         axes[1].hist(normal_p, bins=40, alpha=0.5, label="Обычные", density=True)
-    for p in insider_p:
-        axes[1].axvline(x=p, color='r', alpha=0.7, linewidth=2)
-    if len(insider_p) > 0:
-        axes[1].axvline(x=insider_p[0], color='r', alpha=0.7, linewidth=2, label="Инсайдеры")
+    for i, p in enumerate(insider_p):
+        axes[1].axvline(x=p, color='r', alpha=0.7, linewidth=2,
+                        label="Инсайдеры" if i == 0 else None)
     axes[1].set_xlabel("Вероятность инсайдера")
     axes[1].set_ylabel("Плотность")
     axes[1].set_title("Распределение вероятностей")
@@ -179,6 +178,7 @@ def page_comparison(train_ds, test_ds, use_lstm):
         f1_3 = f1_score(y_true, y_pred, zero_division=0)
 
         arch2_metrics = None
+        pr_rec2, pr_prec2 = None, None
         try:
             from arch2.utils.data_processor import InsiderDetectionDataProcessor
             from arch2.models.lgbm_detector import LightGBMInsiderDetector
@@ -225,7 +225,7 @@ def page_comparison(train_ds, test_ds, use_lstm):
 
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.plot(pr_rec3, pr_prec3, label=f"arch3 ({auc3:.3f})", linewidth=2)
-    if arch2_metrics:
+    if arch2_metrics and pr_rec2 is not None:
         ax.plot(pr_rec2, pr_prec2, linestyle='--',
                 label=f"arch2 ({arch2_metrics['PR-AUC']:.3f})")
     ax.set_xlabel("Recall")

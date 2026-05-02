@@ -80,11 +80,6 @@ def run_arch3(train_dataset, test_dataset, use_cache=True,
         train_dataset, test_dataset, use_cache=use_cache
     )
 
-    proc.feature_engineer.compute_group_statistics(
-        train_df.drop(['user_id', 'is_insider'], axis=1, errors='ignore'),
-        None
-    )
-
     print(f"\n  Признаков: {X_train.shape[1]}")
     print(f"  Train: {X_train.shape[0]} пользователей ({sum(y_train)} инсайдеров)")
     print(f"  Test:  {X_test.shape[0]} пользователей ({sum(y_test)} инсайдеров)")

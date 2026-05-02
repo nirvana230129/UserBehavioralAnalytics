@@ -113,10 +113,9 @@ class Arch3Evaluator:
         insider_p = y_proba[np.array(y_true) == 1]
         if len(normal_p) > 0:
             plt.hist(normal_p, bins=50, alpha=0.5, label='Обычные', density=True)
-        for p in insider_p:
-            plt.axvline(x=p, color='r', alpha=0.6, linewidth=2)
-        if len(insider_p) > 0:
-            plt.axvline(x=insider_p[0], color='r', alpha=0.6, linewidth=2, label='Инсайдеры')
+        for i, p in enumerate(insider_p):
+            plt.axvline(x=p, color='r', alpha=0.6, linewidth=2,
+                        label='Инсайдеры' if i == 0 else None)
         plt.xlabel('Вероятность инсайдера')
         plt.ylabel('Плотность')
         plt.title(f'Распределение вероятностей: {self.train_dataset} -> {self.test_dataset}')
